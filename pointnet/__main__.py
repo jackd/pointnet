@@ -11,7 +11,7 @@ batch_size = 32
 model_dir = '/tmp/pointnet_default'
 lr0 = 1e-3
 epochs = 100
-verbose = False
+verbose = True
 
 optimizer = tf.keras.optimizers.Adam(lr=lr0)
 
@@ -23,7 +23,8 @@ initial_epoch = 0
 
 problem = ModelnetProblem()
 train_steps, validation_steps = (
-    problem.examples_per_epoch(k) for k in ('train', 'validation'))
+    problem.examples_per_epoch(k) // batch_size
+    for k in ('train', 'validation'))
 train_ds, val_ds = (
     problem.get_dataset(split=k, batch_size=batch_size)
     for k in ('train', 'validation'))
