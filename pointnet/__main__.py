@@ -6,6 +6,7 @@ import os
 import tensorflow as tf
 from pointnet.model import pointnet_classifier
 from pointnet.problem import ModelnetProblem
+from pointnet import augment as aug
 
 batch_size = 32
 model_dir = '/tmp/pointnet_default'
@@ -20,6 +21,11 @@ if tf.io.gfile.isdir(model_dir):
 
 tf.io.gfile.makedirs(model_dir)
 initial_epoch = 0
+
+shared_kwargs = dict(
+    rotate_scheme='pca-xy',
+    positions_only=True,
+)
 
 problem = ModelnetProblem()
 train_steps, validation_steps = (
