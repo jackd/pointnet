@@ -21,8 +21,9 @@ class TuneModel(tune.Trainable):
         logging.info("calling setup")
         self.problem = problems.deserialize(**self.config['problem'])
         # construct problem/datasets/inputs
+        batch_size = self.config['batch_size']
         self.steps_per_epoch = {
-            k: self.problem.examples_per_epoch(k)
+            k: self.problem.examples_per_epoch(k) // batch_size
             for k in ('train', 'validation')}
         self._reset_datasets()
         inputs = tf.nest.map_structure(
