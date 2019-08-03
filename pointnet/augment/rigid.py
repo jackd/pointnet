@@ -62,6 +62,7 @@ def reflect(xyz, dim=0, axis=-1):
 
 
 def random_rigid_transform_matrix(stddev=0.02, clip=None, dim=3):
+    dim = getattr(dim, 'value', dim)  # TF-COMPAT
     offset = tf.random.normal(shape=(dim, dim), stddev=stddev)
     if clip:
         offset = tf.clip_by_value(offset, -clip, clip)  # pylint: disable=invalid-unary-operand-type

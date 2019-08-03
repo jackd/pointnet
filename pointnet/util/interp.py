@@ -27,7 +27,7 @@ def get_linear_coords_and_factors(coords, name='linear_coords_and_factors'):
     with tf.name_scope(name):
         coords = tf.convert_to_tensor(coords, tf.float32)
 
-        shape = coords.shape.as_list()
+        shape = coords.shape.as_list()  # TF-COMPAT
         batched = len(shape) == 3
         n_dims = shape[-1]
         shape = tf.shape(coords)

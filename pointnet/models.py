@@ -6,11 +6,14 @@ import tensorflow as tf
 import gin
 layers = tf.keras.layers
 
+def value(dim):
+    return getattr(dim, 'value', dim)  # TF-COMPAT
+
 
 def transform_diff(transform):
     return (
         tf.matmul(transform, transform, transpose_b=True) -
-        tf.eye(transform.shape[-1]))
+        tf.eye(value(transform.shape[-1])))  # TF-COMPAT
 
 
 # @gin.configurable(blacklist=['x', 'units', 'training'])
@@ -29,9 +32,15 @@ def mlp(x, units, training=None, use_batch_norm=True,
     return x
 
 
+def add_identity(x, num_dims=None):
+    if num_dims is None:
+        num_dims = x.shape[-1]
+    return x + tf.eye(num_dims, dtype=x.dtype)
+
+
 # @gin.configurable(blacklist=['features', 'training'])
 def feature_transform_net(
-        features, num_dims, training=None, bn=True, bn_momentum=0.99,
+        features, num_dims, training=None, bn=True, batch_norm_momentum=0.99,
         local_activation='relu', global_activation='relu',
         local_units=(64, 128, 1024), global_units=(512, 256),
         reduction=tf.reduce_max):
@@ -48,16 +57,24 @@ def feature_transform_net(
         (B, num_dims, num_dims) transformation matrix,
     """
     x = mlp(
-        features, local_units, training=training, activation=local_activation)
-    x = reduction(x, axis=-2)
-    x = mlp(x, global_units, training=training, activation=global_activation)
+        features, local_units, training=training, activation=local_activation,
+        batch_norm_momentum=batch_norm_momentum)
+    x = layers.Lambda(reduction, arguments=dict(axis=-2))(x)  # TF-COMPAT
+    x = mlp(
+        x, global_units, training=training, activation=global_activation,
+        batch_norm_momentum=batch_norm_momentum)
 
     delta = layers.Dense(num_dims**2)(x)
     delta = layers.Reshape((num_dims,)*2)(delta)
 
-    delta = delta + tf.eye(num_dims, dtype=delta.dtype)
+    delta = layers.Lambda(
+        add_identity, arguments=dict(num_dims=num_dims))(delta)  # TF-COMPAT
     return delta
 
+
+def apply_transform(args):
+    cloud, matrix = args
+    return tf.matmul(cloud, matrix)
 
 
 def pointnet_classifier(
@@ -87,15 +104,15 @@ def pointnet_classifier(
     num_classes = output_spec.shape[-1]
     cloud = inputs
     transform0 = feature_transform_net(cloud, 3, training=training)
-    cloud = tf.matmul(cloud, transform0)
+    cloud = layers.Lambda(apply_transform)([cloud, transform0])  # TF-COMPAT
     cloud = mlp(cloud, units0, training=training)
 
     transform1 = feature_transform_net(cloud, units0[-1])
-    cloud = tf.matmul(cloud, transform1)
+    cloud = layers.Lambda(apply_transform)([cloud, transform1])  # TF-COMPAT
 
     cloud = mlp(cloud, units1, training=training)
 
-    features = reduction(cloud, axis=-2)
+    features = layers.Lambda(reduction, arguments=dict(axis=-2))(cloud)  # TF-COMPAT
     features = mlp(
         features, global_units, training=training, dropout_rate=dropout_rate)
     logits = tf.keras.layers.Dense(num_classes)(features)
@@ -106,7 +123,8 @@ def pointnet_classifier(
     if transform_reg_weight:
         regularizer = tf.keras.regularizers.l2(transform_reg_weight)
         for transform in (transform1,):
-            model.add_loss(regularizer(transform_diff(transform)))
+            model.add_loss(
+                regularizer(layers.Lambda(transform_diff)(transform)))  # TF-COMPAT
 
     return model
 

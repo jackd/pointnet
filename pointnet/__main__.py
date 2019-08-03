@@ -4,8 +4,8 @@ from __future__ import print_function
 
 import os
 import tensorflow as tf
-from pointnet.model import pointnet_classifier
-from pointnet.problem import ModelnetProblem
+from pointnet.models import pointnet_classifier
+from pointnet.problems import ModelnetProblem
 from pointnet import augment as aug
 
 batch_size = 32

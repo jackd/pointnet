@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from absl import app
+from absl import logging
 import copy
 import numpy as np
 
@@ -40,10 +41,10 @@ def explore(config):
         params['perlin_grid_shape'] = max(
             2, params['perlin_grid_shape'] + up_or_down())
     params['perlin_stddev'] *= default_factor()
-    if np.random.uniform() < 0.2:
-        params['ffd_grid_shape'] = max(
-            2, params['ffd_grid_shape'] + up_or_down())
-    params['ffd_stddev'] *= default_factor()
+    # if np.random.uniform() < 0.2:
+    #     params['ffd_grid_shape'] = max(
+    #         2, params['ffd_grid_shape'] + up_or_down())
+    # params['ffd_stddev'] *= default_factor()
     return config
 
 
@@ -58,8 +59,8 @@ FLAGS.name = 'test'
 FLAGS.local_dir = '/tmp/ray_test'
 FLAGS.checkpoint_freq = 5
 FLAGS.cpu = 4
-FLAGS.gpu = 0
-FLAGS.num_samples = 100
+FLAGS.gpu = 1
+FLAGS.num_samples = 4
 FLAGS.max_epochs = 100
 
 
@@ -69,13 +70,7 @@ def main(_):
     from ray.tune.schedulers import PopulationBasedTraining
     from ray.tune import run_experiments
     import tensorflow as tf
-
-    pbt = PopulationBasedTraining(
-        time_attr='training_iteration',
-        reward_attr='val_sparse_categorical_accuracy',
-        perturbation_interval=5,
-        custom_explore_fn=explore,
-        log_config=True)
+    from pointnet import problems
 
     train_spec = {
         'run': TuneModel,
@@ -94,14 +89,14 @@ def main(_):
                     'train': {
                         'jitter_positions_stddev': 1e-2,
                         'scale_min': 0.95,
-                        'scale_max': 0.95,
+                        'scale_max': 1.05,
                         'rigid_transform_stddev': 1e-2,
                         'maybe_reflect_x': True,
                         'perlin_grid_shape': 4,
                         'perlin_stddev': 0.25,
-                        'ffd_grid_shape': 4,
-                        'ffd_stddev': 0.2,
-                        'rotate_scheme': 'pca-xy'
+                        # 'ffd_grid_shape': 4,
+                        # 'ffd_stddev': 0.2,
+                        'rotate_scheme': 'pca-xy',
                     },
                     'validation': {'rotate_scheme': 'pca-xy'}
             }},
@@ -116,6 +111,18 @@ def main(_):
         'num_samples': FLAGS.num_samples
     }
 
+    problem = problems.deserialize(**train_spec['config']['problem'])
+    objective = problem.objective
+
+    pbt = PopulationBasedTraining(
+        time_attr='training_iteration',
+        # reward_attr=objective.name,
+        metric=objective.name,
+        mode=objective.mode,
+        perturbation_interval=5,
+        custom_explore_fn=explore,
+        log_config=True)
+
     ray.init()
     run_experiments(
         {
@@ -123,8 +130,12 @@ def main(_):
         },
         scheduler=pbt,
         reuse_actors=True,
-        verbose=True)
+        verbose=True,
+        resume=True,
+        )
 
 
 if __name__ == '__main__':
+    logging.set_verbosity(logging.INFO)
     app.run(main)
+# main(None)

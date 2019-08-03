@@ -30,6 +30,7 @@ def add_perlin_noise(
         coords, grid_shape=(4, 4, 4), stddev=0.25, eps=1e-5, rescale=True):
     if isinstance(grid_shape, int):
         num_dims = coords.shape[-1]
+        num_dims = getattr(num_dims, 'value', num_dims)  # TF-COMPAT
         grid_shape = (grid_shape,)*num_dims
     else:
         num_dims = len(grid_shape)

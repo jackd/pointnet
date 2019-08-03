@@ -17,7 +17,6 @@ from pointnet import models
 class TuneModel(tune.Trainable):
 
     def _setup(self, *args):
-        logging.set_verbosity(logging.INFO)
         logging.info("calling setup")
         self.problem = problems.deserialize(**self.config['problem'])
         # construct problem/datasets/inputs
@@ -31,8 +30,11 @@ class TuneModel(tune.Trainable):
             self.problem.input_spec)
 
         # create/compile model and checkpoint
+        # note: we use training=True even during evaluation
+        # this ensure spurious errors caused by batch norm state being out of
+        # sync do not unfairly punish potentially good performing models
         self.model = models.deserialize(
-            inputs, training=None, output_spec=self.problem.output_spec,
+            inputs, training=True, output_spec=self.problem.output_spec,
             **self.config['model_fn'])
         self.model.compile(
             loss=self.problem.loss,
@@ -40,7 +42,8 @@ class TuneModel(tune.Trainable):
             optimizer=tf.keras.optimizers.deserialize(self.config['optimizer'])
         )
         self.checkpoint = tf.train.Checkpoint(
-            optimizer=self.model.optimizer, model=self.model)
+            # optimizer=self.model.optimizer,
+            model=self.model)
         # self.log_dir = self.config['log_dir']
 
     def _train(self):
@@ -55,8 +58,13 @@ class TuneModel(tune.Trainable):
             steps_per_epoch=self.steps_per_epoch['train'],
             validation_steps=self.steps_per_epoch['validation'],
             # callbacks=[self.tb_callback],
+            verbose=False
         )
-        return {k: v[-1] for k, v in history.history.items()}
+        vals = {k: v[-1] for k, v in history.history.items()}
+        vals_str = '\n'.join('%-35s: %f' % (k, vals[k]) for k in sorted(vals))
+        logging.info(
+            "finished iteration %d\n%s" % (self._iteration, vals_str))
+        return vals
 
     def _save(self, checkpoint_dir):
         """Uses tf trainer object to checkpoint."""

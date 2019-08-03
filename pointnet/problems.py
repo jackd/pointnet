@@ -126,7 +126,7 @@ class ModelnetProblem(TfdsProblem):
                 from_logits=True),
             metrics=(tf.keras.metrics.SparseCategoricalAccuracy(),),
             objective=None,
-            use_train_test_split=True,
+            use_train_test_split=False,
             train_percent=90,
             download_kwargs={},
             **kwargs):

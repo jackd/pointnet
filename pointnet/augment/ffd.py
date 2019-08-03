@@ -135,7 +135,7 @@ def get_stu_params(xyz):
 # @gin.configurable(blacklist=['xyz'])
 def random_ffd(xyz, grid_shape=(4, 4, 4), stddev=0.2):
     if isinstance(grid_shape, int):
-        grid_shape = (grid_shape,)*xyz.shape[-1]
+        grid_shape = (grid_shape,)*xyz.shape.as_list()[-1]  # TF-COMPAT
     b, p = get_ffd(xyz, grid_shape)
     dp = tf.random.normal(shape=p.shape, stddev=stddev)
     return tf.matmul(b, p + dp)
