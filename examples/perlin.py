@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-from pointnet.util import perlin
+from pointnet.augment import perlin
 tf.compat.v1.enable_eager_execution()
 
 num_points = 10000

@@ -2,71 +2,46 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import tensorflow as tf
-from pointnet.models import pointnet_classifier
-from pointnet.problems import ModelnetProblem
-from pointnet import augment as aug
+from absl import app
+from absl import flags
+from absl import logging
+import gin
+from pointnet.cli import config
+from pointnet.cli.actions import actions
 
-batch_size = 32
-model_dir = '/tmp/pointnet_default'
-lr0 = 1e-3
-epochs = 100
-verbose = True
-
-optimizer = tf.keras.optimizers.Adam(lr=lr0)
-
-if tf.io.gfile.isdir(model_dir):
-    tf.io.gfile.rmtree(model_dir)
-
-tf.io.gfile.makedirs(model_dir)
-initial_epoch = 0
-
-shared_kwargs = dict(
-    rotate_scheme='pca-xy',
-    positions_only=True,
-)
-
-problem = ModelnetProblem()
-train_steps, validation_steps = (
-    problem.examples_per_epoch(k) // batch_size
-    for k in ('train', 'validation'))
-train_ds, val_ds = (
-    problem.get_dataset(split=k, batch_size=batch_size)
-    for k in ('train', 'validation'))
-
-inputs = tf.nest.map_structure(
-    lambda shape, dtype: tf.keras.layers.Input(shape=shape[1:], dtype=dtype),
-    train_ds.output_shapes[0], train_ds.output_types[0])
-
-model = pointnet_classifier(
-    inputs, training=None, output_spec=problem.output_spec)
+import pointnet.models
+import pointnet.problems
+import pointnet.augment
+import pointnet.keras_configurables
+import pointnet.callbacks
+import pointnet.train
+import pointnet.path
 
 
-def schedule(t):
-    return lr0 * 2 ** (-t // 20)
+flags.DEFINE_string('action', default='log_config', help='function to run')
+flags.DEFINE_string(
+    'config_dir', None,
+    'Root config directory. See `pointnet.clip.config.get_config_dir`')
+flags.DEFINE_multi_string(
+    'gin_file', None,
+    'List of paths to the config files relative to `config_dir`.')
+flags.DEFINE_multi_string(
+    'gin_params', None, 'List/newline separated config params.')
+FLAGS = flags.FLAGS
 
 
-ckpt_path = os.path.join(model_dir, 'cp-{epoch:04d}.ckpt')
-callbacks = [
-        tf.keras.callbacks.TensorBoard(log_dir=model_dir),
-        tf.keras.callbacks.TerminateOnNaN(),
-        tf.keras.callbacks.LearningRateScheduler(schedule),
-        tf.keras.callbacks.ModelCheckpoint(ckpt_path),
-]
+@gin.configurable
+def f(x=None):
+    print(x)
 
-model.compile(
-    loss=problem.loss,
-    metrics=problem.metrics,
-    optimizer=optimizer,
-)
 
-model.fit(
-    train_ds,
-    epochs=epochs,
-    verbose=verbose,
-    callbacks=callbacks,
-    validation_data=val_ds,
-    steps_per_epoch=train_steps,
-    validation_steps=validation_steps,
-    initial_epoch=initial_epoch)
+def main(args):
+    gin_file = [
+        gf if gf.endswith('.gin') else '{}.gin'.format(gf)
+        for gf in FLAGS.gin_file]
+    config.parse_config(FLAGS.config_dir, gin_file, FLAGS.gin_params)
+    actions[FLAGS.action]()
+
+
+if __name__ == '__main__':
+    app.run(main)

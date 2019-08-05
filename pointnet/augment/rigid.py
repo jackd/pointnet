@@ -69,7 +69,7 @@ def random_rigid_transform_matrix(stddev=0.02, clip=None, dim=3):
     return tf.eye(dim) + offset
 
 
-# @gin.configurable(blacklist=['positions', 'normals'])
+@gin.configurable(blacklist=['positions', 'normals'])
 def rotate_by_scheme(positions, normals=None, scheme='random'):
     """scheme should be in ("random", "pca-xy", "none")."""
     if scheme == 'none':
@@ -84,7 +84,7 @@ def rotate_by_scheme(positions, normals=None, scheme='random'):
     return rotate(positions, normals, angle)
 
 
-# @gin.configurable(blacklist=['points'])
+@gin.configurable(blacklist=['points'])
 def random_rigid_transform(points, normals=None, stddev=0.02, clip=None):
     transform = random_rigid_transform_matrix(stddev, clip, points.shape[-1])
     points = tf.matmul(points, transform)
@@ -94,7 +94,7 @@ def random_rigid_transform(points, normals=None, stddev=0.02, clip=None):
         raise NotImplementedError('Normal rigid transform not implemented')
 
 
-# @gin.configurable(blacklist=['positions', 'axis'])
+@gin.configurable(blacklist=['positions', 'axis'])
 def maybe_reflect(positions, axis=-1, dim=0, prob=0.5):
     should_reflect = tf.random.uniform(shape=(), dtype=tf.float32) > prob
     return tf.cond(
@@ -103,8 +103,7 @@ def maybe_reflect(positions, axis=-1, dim=0, prob=0.5):
         lambda: positions)
 
 
-# @gin.configurable(blacklist=['positions'])
-def random_scale(positions, scale_range):
-    min_value, max_value = scale_range
-    return positions * (
-        tf.random.uniform(shape=()) * (max_value - min_value) + min_value)
+@gin.configurable(blacklist=['positions'])
+def random_scale(positions, stddev):
+    scale = tf.random.truncated_normal(shape=(), mean=1.0, stddev=stddev)
+    return positions * scale

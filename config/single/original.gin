@@ -1,0 +1,8 @@
+# parameters from the original pointnet paper
+include 'single/base.gin'
+
+pointnet.callbacks.get_additional_callbacks.lr_schedule = @original_lr_schedule
+optimizer = @tf.keras.optimizers.Adam()
+tf.keras.optimizers.Adam.lr = 1e-3
+
+name = 'original'

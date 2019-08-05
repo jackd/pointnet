@@ -25,9 +25,11 @@ def scale_to_grid(coords, grid_shape, eps=1e-5):
     return coords, rescale
 
 
-# @gin.configurable(blacklist=['coords'])
+@gin.configurable(blacklist=['coords'])
 def add_perlin_noise(
         coords, grid_shape=(4, 4, 4), stddev=0.25, eps=1e-5, rescale=True):
+    if stddev == 0 or stddev is None:
+        return coords
     if isinstance(grid_shape, int):
         num_dims = coords.shape[-1]
         num_dims = getattr(num_dims, 'value', num_dims)  # TF-COMPAT

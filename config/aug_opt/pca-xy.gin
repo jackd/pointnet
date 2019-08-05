@@ -1,0 +1,4 @@
+include 'aug_opt/random.gin'
+name = 'pca-xy'
+
+outer_config.inner_bindings = ['rotate_scheme="pca-xy"']

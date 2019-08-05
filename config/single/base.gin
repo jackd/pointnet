@@ -1,0 +1,40 @@
+import pointnet.models
+import pointnet.problems
+import pointnet.augment
+import pointnet.keras_configurables
+import pointnet.callbacks
+import pointnet.train
+import pointnet.path
+
+batch_size = 32
+rotate_scheme = 'random'
+optimizer = @tf.keras.optimizers.SGD()
+
+train.problem = @ModelnetProblem()
+train.map_fn = {
+    'train': @train/augment_cloud,
+    'validation': @validation/augment_cloud,
+}
+train.model_fn = @pointnet_classifier
+train.batch_size = %batch_size
+train.optimizer = %optimizer
+tf.keras.optimizers.SGD.lr = 1e-3
+tf.keras.optimizers.SGD.momentum = 0.99
+
+train.chkpt_callback = @pointnet.callbacks.ModelCheckpoint()
+pointnet.callbacks.ModelCheckpoint.load_weights_on_restart = True
+pointnet.callbacks.ModelCheckpoint.directory = %local_dir
+
+jitter_positions.stddev = None
+rotate_by_scheme.scheme = %rotate_scheme
+
+train.callbacks = @pointnet.callbacks.get_additional_callbacks()
+pointnet.callbacks.get_additional_callbacks.log_dir = %local_dir
+
+local_dir = @pointnet.path.local_dir()
+pointnet.path.local_dir.subdir = 'single'
+pointnet.path.local_dir.name = %name
+
+name = 'base'
+
+f.x = 'fixed'

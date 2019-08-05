@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import functools
 import gin
 layers = tf.keras.layers
 
@@ -16,7 +17,7 @@ def transform_diff(transform):
         tf.eye(value(transform.shape[-1])))  # TF-COMPAT
 
 
-# @gin.configurable(blacklist=['x', 'units', 'training'])
+@gin.configurable(blacklist=['x', 'units', 'training'])
 def mlp(x, units, training=None, use_batch_norm=True,
         batch_norm_momentum=0.99, dropout_rate=0, activation='relu'):
     use_bias = not use_batch_norm
@@ -38,7 +39,7 @@ def add_identity(x, num_dims=None):
     return x + tf.eye(num_dims, dtype=x.dtype)
 
 
-# @gin.configurable(blacklist=['features', 'training'])
+@gin.configurable(blacklist=['features', 'training'])
 def feature_transform_net(
         features, num_dims, training=None, bn=True, batch_norm_momentum=0.99,
         local_activation='relu', global_activation='relu',
@@ -77,6 +78,7 @@ def apply_transform(args):
     return tf.matmul(cloud, matrix)
 
 
+@gin.configurable(blacklist=['inputs', 'training', 'output_spec'])
 def pointnet_classifier(
         inputs, training, output_spec, dropout_rate=0.3,
         reduction=tf.reduce_max, units0=(64, 64), units1=(64, 128, 1024),
@@ -124,13 +126,12 @@ def pointnet_classifier(
         regularizer = tf.keras.regularizers.l2(transform_reg_weight)
         for transform in (transform1,):
             model.add_loss(
-                regularizer(layers.Lambda(transform_diff)(transform)))  # TF-COMPAT
-
+                tf.keras.layers.Lambda(regularizer)(
+                    layers.Lambda(transform_diff)(transform)))  # TF-COMPAT
     return model
 
 
-def deserialize(
-        inputs, training, output_spec, name='pointnet_classifier', **kwargs):
-    return {
+def deserialize(name='pointnet_classifier', **kwargs):
+    return functools.partial({
         'pointnet_classifier': pointnet_classifier
-    }[name](inputs, training, output_spec, **kwargs)
+    }[name], **kwargs)

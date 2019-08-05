@@ -1,12 +1,10 @@
-"""Might come back to this idea..."""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import functools
 import six
 
-_transforms = {}
+_transforms = {}  # pylint: disable=unreachable
 
 
 def register_transform(name=None):

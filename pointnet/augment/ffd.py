@@ -26,9 +26,9 @@ def trivariate_bernstein(stu, lattice):
     l, m, n = (d - 1 for d in lattice.shape[:3])
     lmn = np.array([l, m, n], dtype=np.int32)
     v = np.stack(np.meshgrid(
-        np.arange(l+1, dtype=np.int32),
-        np.arange(m+1, dtype=np.int32),
-        np.arange(n+1, dtype=np.int32),
+        np.arange(l, dtype=np.int32),
+        np.arange(m, dtype=np.int32),
+        np.arange(n, dtype=np.int32),
         indexing='ij'), axis=-1)
     stu = np.reshape(stu, (-1, 1, 1, 1, 3))
     weights = bernstein_poly(n=lmn, v=v, stu=stu)
@@ -66,7 +66,7 @@ def stu_to_xyz(stu_points, stu_origin, stu_axes):
 
 
 def get_stu_control_points(dims):
-    mesh = _mesh((tf.linspace(0., 1., d+1) for d in dims))
+    mesh = _mesh((tf.linspace(0., 1., d) for d in dims))
     return tf.cast(tf.reshape(mesh, (-1, 3)), tf.float32)
 
 
@@ -78,7 +78,7 @@ def get_control_points(dims, stu_origin, stu_axes):
 
 def get_stu_deformation_matrix(stu, dims):
     v = np.stack(np.meshgrid(
-        *(np.arange(0, d+1, dtype=np.int32) for d in dims),
+        *(np.arange(0, d, dtype=np.int32) for d in dims),
         indexing='ij'), axis=-1)
     v = np.reshape(v, (-1, 3))
 
@@ -96,6 +96,7 @@ def get_deformation_matrix(xyz, dims, stu_origin, stu_axes):
     return get_stu_deformation_matrix(stu, dims)
 
 
+@gin.configurable(blacklist=['xyz'])
 def get_ffd(xyz, dims, stu_origin=None, stu_axes=None):
     """
     Get free form deformation using Bernstein basis.
@@ -105,7 +106,7 @@ def get_ffd(xyz, dims, stu_origin=None, stu_axes=None):
         others: ignore?
 
     Returns:
-        b: [num_points, prod(d + 1 for d in dims)] decomposition
+        b: [num_points, prod(d for d in dims)] decomposition
         p: [prod(d + 1 for d in dims), 3] float.
 
     tf.matmul(b, p) == xyz
@@ -132,10 +133,11 @@ def get_stu_params(xyz):
     return stu_origin, stu_axes
 
 
-# @gin.configurable(blacklist=['xyz'])
+@gin.configurable(blacklist=['xyz'])
 def random_ffd(xyz, grid_shape=(4, 4, 4), stddev=0.2):
     if isinstance(grid_shape, int):
-        grid_shape = (grid_shape,)*xyz.shape.as_list()[-1]  # TF-COMPAT
+        num_dims = xyz.shape.as_list()[-1]  # TF-COMPAT
+        grid_shape = (grid_shape,) * num_dims
     b, p = get_ffd(xyz, grid_shape)
     dp = tf.random.normal(shape=p.shape, stddev=stddev)
     return tf.matmul(b, p + dp)
