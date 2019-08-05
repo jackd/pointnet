@@ -1,0 +1,12 @@
+include 'aug_opt/random.gin'
+name = 'smoke-test'
+
+outer_config.inner_bindings = [
+    'ModelnetProblem.num_examples_override=10',
+    'batch_size.arg=2',
+]
+
+train_spec.num_samples = 2
+train_spec.max_epochs = 5
+search.perturbation_interval = 1
+search.resume = False

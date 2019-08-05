@@ -232,8 +232,10 @@ class ModelnetProblem(TfdsProblem):
             use_train_test_split=False,
             train_percent=90,
             download_kwargs={},
+            num_examples_override=None,
             **kwargs):
         import functools
+        self._num_examples_override = num_examples_override
         if objective is None:
             objective = Objective('val_%s' % metrics[0].name, 'max')
 
@@ -283,6 +285,8 @@ class ModelnetProblem(TfdsProblem):
                 return split
 
     def examples_per_epoch(self, split):
+        if self._num_examples_override is not None:
+            return self._num_examples_override
         # return 10  # SMOKE-TEST
         if self._use_train_test_split:
             return examples_per_epoch(self._builder, self._split(split))

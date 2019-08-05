@@ -36,7 +36,7 @@ def explore(config):
         return trunc_norm(loc=loc, scale=scale)
 
     config = copy.deepcopy(config)
-    mutable_bindings = config['mutable_bindigs']
+    mutable_bindings = config['mutable_bindings']
     for k, scale in (
             ('jitter_positions.stddev', 0.1),
             ('jitter_positions.stddev', 0.1),
@@ -125,9 +125,14 @@ def search(
         custom_explore_fn=custom_explore_fn,
         log_config=log_config)
 
+    experiment = Experiment.from_json(name=name, spec=train_spec)
+    if clean and os.path.exists(experiment.local_dir):
+        import shutil
+        shutil.rmtree(experiment.local_dir)
+
     ray.init()
     run(
-        Experiment.from_json(name=name, spec=train_spec),
+        experiment,
         name=name,
         scheduler=pbt,
         reuse_actors=True,
