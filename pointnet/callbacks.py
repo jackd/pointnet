@@ -18,7 +18,7 @@ class ModelCheckpoint(tf.keras.callbacks.ModelCheckpoint):
         if not os.path.isdir(directory):
             os.makedirs(directory)
         self._directory = directory
-        filepath = os.path.join(directory, 'model-{epoch:04d}.h5')
+        filepath = os.path.join(directory, 'model-{epoch:05d}.h5')
         self._max_to_keep = max_to_keep
         super(ModelCheckpoint, self).__init__(
             filepath=filepath, save_freq=save_freq,
@@ -61,6 +61,9 @@ class ModelCheckpoint(tf.keras.callbacks.ModelCheckpoint):
                 checkpoints = sorted(checkpoints)
                 for checkpoint in checkpoints[:-self._max_to_keep]:
                     os.remove(os.path.join(directory, checkpoint))
+
+    def save_model(self, epoch):
+        self._save_model(epoch, logs=None)
 
 
 

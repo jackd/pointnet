@@ -1,0 +1,5 @@
+ModelnetProblem.num_examples_override = 10
+batch_size = 2
+epochs = 2
+resume = False
+name = 'smoke-test'

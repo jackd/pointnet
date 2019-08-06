@@ -1,0 +1,3 @@
+augment_cloud.rotate_scheme = 'pca-xy'
+train/augment_cloud.jitter_stddev = 1e-2
+name = 'pca-xy_j1e-2'

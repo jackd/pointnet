@@ -1,0 +1,36 @@
+import pointnet.__main__
+import pointnet.aug_opt
+import pointnet.util.path
+
+run.fn = @aug_opt
+train_spec.local_dir = @util.local_dir()
+util.local_dir.subdir = 'aug_opt'
+util.local_dir.name = %name
+
+aug_opt.name = %name
+aug_opt.train_spec = @train_spec()
+train_spec.outer_config = @outer_config()
+outer_config.inner_config_files = %inner_config
+outer_config.inner_bindings = %inner_bindings
+
+# consider also:
+# mutable_bindings - to determine which bindings to mutate
+
+# core configurables
+inner_config = 'aug_opt/models/base.gin'
+inner_bindings = []
+name = 'default'
+
+aug_opt.num_cpus = %num_cpus
+aug_opt.num_gpus = %num_gpus
+
+train_spec.cpus_per_trial = %cpus_per_trial
+train_spec.gpus_per_trial = %gpus_per_trial
+
+# allow ray to automatically select the number of GPUs with `None`s
+num_cpus = None
+num_gpus = None
+
+# customize as necessary
+cpus_per_trial = 4
+gpus_per_trial = 1

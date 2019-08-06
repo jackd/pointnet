@@ -10,6 +10,12 @@ with open('requirements.txt') as fp:
     install_requires = fp.read().split('\n')
 
 
+ACTION_CONFIGS = [
+    'cli/action_configs/*',
+    'tune_model.gin',
+]
+
+
 setup(
     name='pointnet',
     version='0.0.1',
@@ -20,5 +26,6 @@ setup(
     license='MIT',
     packages=find_packages(),
     requirements=install_requires,
-    zip_safe=True
+    zip_safe=True,
+    package_data={'pointnet': ACTION_CONFIGS}
 )

@@ -1,0 +1,3 @@
+augment_cloud.rotate_scheme = 'pca-xy'
+name = 'pca-xy_sched'
+pointnet.callbacks.get_additional_callbacks.lr_schedule = @original_lr_schedule

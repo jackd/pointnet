@@ -1,0 +1,4 @@
+augment_cloud.rotate_scheme = 'pca-xy'
+train/augment_cloud.jitter_stddev = 1e-2
+pointnet.callbacks.get_additional_callbacks.lr_schedule = @original_lr_schedule
+name = 'pca-xy_j1e-2_sched'

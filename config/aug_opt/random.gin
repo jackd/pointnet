@@ -1,19 +1,2 @@
-import pointnet.aug_opt
-import pointnet.path
-import pointnet.models
-import pointnet.problems
-import pointnet.augment
-import pointnet.keras_configurables
-import pointnet.tune_model
-
-search.name = %name
-train_spec.local_dir = @pointnet.path.local_dir()
-
-pointnet.path.local_dir.subdir = 'aug_opt'
-
-outer_config.inner_gin_file = 'aug_opt/models/base.gin'
-
+inner_bindings = ['rotate_scheme="random"']
 name = 'random'
-pointnet.path.local_dir.name = %name
-
-outer_config.inner_bindings = ['rotate_scheme="random"']

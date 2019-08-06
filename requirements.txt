@@ -1,4 +1,3 @@
-tensorflow >= 2.0
 gin-config
 git+git://github.com/jackd/shape-tfds.git@master
 ray

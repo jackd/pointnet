@@ -8,14 +8,21 @@ Based on [this](https://github.com/charlesq34/pointnet).
 git clone https://github.com/jackd/pointnet.git
 ```
 
+### Changing Process name
+
+```bash
+sudo apt-get install build-essential libcap-dev
+pip install python-prctl
+```
+
 ## Usage
 
 ### Single example
 
 ```bash
-python -m pointnet --gin_file=single/base --gin_params='
+python -m pointnet --action=train --config_files=single/base --bindings='
     rotate_scheme="pca-xy"
     jitter_positions.stddev=1e-2
-    model_dir="~/pointnet_models/single/pca-j1e-2"
+    name="pca-xy_j1e-2"
 '
 ```

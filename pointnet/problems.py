@@ -8,7 +8,6 @@ import functools
 import gin
 import tensorflow as tf
 import tensorflow_datasets as tfds
-from pointnet.augment import flat_augment_cloud
 from shape_tfds.shape import modelnet
 
 Objective = collections.namedtuple('Objective', ['name', 'mode'])
@@ -26,7 +25,7 @@ class Problem(object):
 
     def get_generator(self, split, batch_size=None, map_fn=None, ):
         graph = tf.Graph()
-        with graph.as_default():
+        with graph.as_default():  # pylint: disable=not-context-manager
             dataset = self.get_dataset(
                 split, batch_size=batch_size, map_fn=map_fn, )
         return tfds.as_numpy(dataset, graph=graph)

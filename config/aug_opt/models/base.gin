@@ -4,27 +4,14 @@ import pointnet.augment
 import pointnet.keras_configurables
 import pointnet.tune_model
 
-model_fn.arg = @pointnet_classifier
-problem.arg = @ModelnetProblem()
-batch_size.arg = 32
-initial_weights_path.arg = None
+model_fn = @pointnet_classifier
+problem = @ModelnetProblem()
+batch_size = 32
+initial_weights_path = None
 
-train_map_fn.arg = @train/augment_cloud
-validation_map_fn.arg = @validation/augment_cloud
-
-# optimizer
-optimizer.arg = @tf.keras.optimizers.SGD()
+optimizer = @tf.keras.optimizers.SGD()
 tf.keras.optimizers.SGD.lr = 1e-3
 tf.keras.optimizers.SGD.momentum = 0.9
 
-rotate_by_scheme.scheme = %rotate_scheme
+augment_cloud.rotate_scheme = %rotate_scheme
 rotate_scheme = 'random'
-
-validation/augment_cloud.jitter_positions_transform = None
-validation/augment_cloud.rotate_transform = None
-
-train/augment_cloud.jitter_positions_transform = @jitter_positions
-train/augment_cloud.scale_transform = @random_scale
-train/augment_cloud.rigid_transform = @random_rigid_transform
-train/augment_cloud.reflect_transform = @maybe_reflect
-train/augment_cloud.perlin_transform = @add_perlin_noise

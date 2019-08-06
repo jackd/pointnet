@@ -2,29 +2,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl import logging
 import os
-import tensorflow as tf
 import gin
+import tensorflow as tf
 from pointnet import callbacks as cb
-from pointnet.cli.actions import actions
+from pointnet.util.gpu_options import gpu_options
 
 
-@actions.register
 @gin.configurable
 def train(
-        problem=None, map_fn=None, model_fn=None,
-        optimizer=None, batch_size=32, verbose=True, epochs=100,
-        chkpt_callback=None, callbacks=None, resume=True,
+        problem, map_fn, model_fn, optimizer, batch_size=32, verbose=True,
+        epochs=100, chkpt_callback=None, callbacks=None,
         save_config=True):
-    if problem is None:
-        from pointnet import problems
-        problem = problems.deserialize()
-    if model_fn is None:
-        from pointnet import models
-        model_fn = models.deserialize()
-    if optimizer is None:
-        optimizer = tf.keras.optimizers.Adam(lr=1e-3)
-
+    gpu_options()
     train_steps, validation_steps = (
         problem.examples_per_epoch(k) // batch_size
         for k in ('train', 'validation'))
@@ -34,9 +25,8 @@ def train(
         for k in ('train', 'validation'))
 
     inputs = tf.nest.map_structure(
-        lambda shape, dtype: tf.keras.layers.Input(
-            shape=shape[1:], dtype=dtype),
-        train_ds.output_shapes[0], train_ds.output_types[0])
+        lambda spec: tf.keras.layers.Input(shape=spec.shape, dtype=spec.dtype),
+        problem.input_spec)
 
     model = model_fn(inputs, training=None, output_spec=problem.output_spec)
 
@@ -51,10 +41,14 @@ def train(
     if chkpt_callback is not None:
         callbacks.append(chkpt_callback)
         directory = chkpt_callback.directory
-        initial_epoch = chkpt_callback.latest_epoch
+        if chkpt_callback.load_weights_on_restart:
+            initial_epoch = chkpt_callback.latest_epoch
 
-        if initial_epoch is None:
-            initial_epoch = 0
+            if initial_epoch is None:
+                initial_epoch = 0
+
+    if initial_epoch >= epochs:
+        logging.info('')
 
     config_path = os.path.join(
         directory, 'operative_config-{}.gin'.format(initial_epoch))
@@ -75,51 +69,29 @@ def train(
     return history
 
 
-if __name__ == '__main__':
-    gin_config = '''
-    import pointnet.models
-    import pointnet.problems
-    import pointnet.augment
-    import pointnet.keras_configurables
-    import pointnet.callbacks
+@gin.configurable
+def evaluate(
+        problem, map_fn, model_fn, batch_size=32,
+        split='validation', chkpt_callback=None):
+    gpu_options()
+    if problem is None:
+        from pointnet import problems
+        problem = problems.deserialize()
+    if model_fn is None:
+        from pointnet import models
+        model_fn = models.deserialize()
 
-    model_dir = '/tmp/pointnet_default'
+    inputs = tf.nest.map_structure(
+        lambda spec: tf.keras.layers.Input(shape=spec.shape, dtype=spec.dtype),
+        problem.input_spec)
 
-    train.problem = @ModelnetProblem()
-    train.map_fn = {
-        'train': @train/augment_cloud,
-        'validation': @validation/augment_cloud,
-    }
-    train.model_fn = @pointnet_classifier
-    # train.batch_size = 2                            # SMOKE-TEST
-    train.batch_size = 32                           # SMOKE-TEST
-    train.optimizer = @tf.keras.optimizers.SGD()
-    tf.keras.optimizers.SGD.lr = 1e-3
-    tf.keras.optimizers.SGD.momentum = 0.99
+    model = model_fn(inputs, training=None, output_spec=problem.output_spec)
 
-    # train.chkpt_callback = @pointnet.callbacks.ModelCheckpoint()
-    # pointnet.callbacks.ModelCheckpoint.directory = %model_dir
-    # train.chkpt_callback = @pointnet.callbacks.CheckpointCallback()
-    # pointnet.callbacks.CheckpointCallback.directory = %model_dir
-    train.chkpt_callback = @pointnet.callbacks.ModelCheckpoint()
-    pointnet.callbacks.ModelCheckpoint.load_weights_on_restart = True
-    pointnet.callbacks.ModelCheckpoint.directory = %model_dir
+    if chkpt_callback is not None:
+        latest = chkpt_callback.restore_latest()
+        logging.info('Loading models from {}'.format(latest))
 
-    # rotate_by_scheme.scheme = 'pca-xy'
-    # jitter_positions.stddev = None
-    rotate_by_scheme.scheme = 'random'
-    # train/jitter_positions.stddev = 1e-2
+    dataset = problem.get_dataset(
+        split=split, map_fn=map_fn, batch_size=batch_size)
 
-    tf.keras.callbacks.TensorBoard.log_dir = %model_dir
-
-    tf.keras.callbacks.LearningRateScheduler.schedule = @original_lr_schedule
-
-    train.misc_callbacks = [
-        @tf.keras.callbacks.TerminateOnNaN(),
-        # @tf.keras.callbacks.LearningRateScheduler(),
-        @tf.keras.callbacks.TensorBoard(),
-    ]
-
-    '''
-    gin.parse_config(gin_config)
-    train()
+    return model.evaluate(dataset, steps=problem.examples_per_epoch(split))

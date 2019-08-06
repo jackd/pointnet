@@ -18,62 +18,70 @@ from pointnet import models
 from pointnet import augment as aug
 import gin
 from pointnet.cli.config import parse_config
+from pointnet.util.gpu_options import gpu_options
 
 
 @gin.configurable
-def problem(arg=None):
-    return arg
+def problem(value=None):
+    if value is None:
+        from pointnet.problems import ModelnetProblem
+        value = ModelnetProblem()
+    return value
 
 
 @gin.configurable
-def optimizer(arg=None):
-    return arg
+def optimizer(value=None):
+    if value is None:
+        value = tf.keras.optimizers.Adam()
+    return value
 
 
 @gin.configurable
-def batch_size(arg=None):
-    return arg
+def batch_size(value=32):
+    return value
 
 
 @gin.configurable
-def model_fn(arg=lambda inputs, training, output_spec: None):
-    return arg
+def model_fn(
+        fn=lambda inputs, training, output_spec: tf.keras.Model(
+            inputs=inputs)):
+    return fn
+
+
+def _default_map_fn(inputs, labels):
+    return inputs, labels
 
 
 @gin.configurable
-def train_map_fn(arg=None):
-    return arg
+def initial_weights_path(value=None):
+    return value
 
 
 @gin.configurable
-def validation_map_fn(arg=None):
-    return arg
+def train_map_fn(fn=None):
+    return fn
 
 
 @gin.configurable
-def initial_weights_path(arg=None):
-    return arg
+def validation_map_fn(fn=None):
+    return fn
+
+
+TUNE_MODEL_CONFIG = os.path.join(os.path.dirname(__file__), 'tune_model.gin')
 
 
 class TuneModel(tune.Trainable):
     """
     Experiments are configured almost entirely via gin.
 
-    gin configs should have the following macros defined:
-        train_map_fn:         (inputs, labels) -> (inputs, labels)
-        validation_map_fn:    (inputs, labels) -> (inputs, labels)
-        optimizer:            () -> optimizer
-        model:                (inputs, training, output_spec) -> model
-        problem:              () -> problem
-        batch_size:           int
-        initial_weights_path: optional str, path
+    see `tune_model.gin` for macros to override.
 
     config dictionary passed to constructor should have
         str             config_dir
-        List<str>       gin_file
-        List<str>       bindings
-        Dict<string, ?> mutable_bindings
-        int             verbosity (defaults to logging.INFO)
+        List<str>       config_files
+        List<str>       bindings (variations from config_files)
+        Dict<string, ?> mutable_bindings (presumably changed each mutation)
+        int             verbosity
 
     Mutations are expected in mutable_bindings, and should also provide the
     flags (assumed `False` if absent)
@@ -82,10 +90,11 @@ class TuneModel(tune.Trainable):
         bool reset_generators
         bool reset_model
         bool reset_session
+    to flag whether or not the mutations require resetting the relevant
+    objects.
     """
 
-    def _setup(self, *args):
-        config = self.config
+    def _setup(self, config):
         logging.set_verbosity(config.get('verbosity', logging.INFO))
 
         logging.info("calling setup")
@@ -93,9 +102,12 @@ class TuneModel(tune.Trainable):
             '{} = {}'.format(left, right)
             for left, right in config['mutable_bindings'].items()]
         bindings = config['bindings'] + mutable_bindings
-        with gin.unlock_config():
-            parse_config(
-                config['config_dir'], config['gin_file'], bindings)
+        config_files = config['config_files']
+        if isinstance(config_files, six.string_types):
+            config_files = [config_files]
+        config_files = [TUNE_MODEL_CONFIG] + config_files
+        parse_config(config['config_dir'], config_files, bindings)
+        gpu_options()
 
         self._generators = None
         self._problem = None
@@ -121,7 +133,6 @@ class TuneModel(tune.Trainable):
     @property
     def problem(self):
         if self._problem is None:
-            # self._problem = get_scoped_value('problem')
             self._problem = problem()
         return self._problem
 
@@ -147,9 +158,9 @@ class TuneModel(tune.Trainable):
 
             # create/compile model and checkpoint
             # note: we use training=True even during evaluation
-            # this ensure spurious errors caused by batch norm state being out of
-            # sync do not unfairly punish potentially good performing models
-            self._model = model_fn()(    # pylint: disable=not-callable
+            # this ensure spurious errors caused by batch norm state being out
+            # of sync do not unfairly punish potentially good performing models
+            self._model = model_fn()(  # pylint: disable=not-callable
                 inputs, training=True, output_spec=self.problem.output_spec)
             self._model.compile(
                 loss=self.problem.loss,
@@ -187,13 +198,14 @@ class TuneModel(tune.Trainable):
         vals = {k: v[-1] for k, v in history.history.items()}
         vals_str = '\n'.join('%-35s: %f' % (k, vals[k]) for k in sorted(vals))
         logging.info(
-            "finished iteration %d\n%s" % (self._iteration, vals_str))
+            "finished iteration {}\n{}".format(self._iteration, vals_str))
         return vals
 
     def _save(self, checkpoint_dir):
         """Uses tf trainer object to checkpoint."""
         save_name = os.path.join(
-            checkpoint_dir, 'model-%05d.h5' % self._iteration)
+            checkpoint_dir,
+            'model-{epoch:05d}.h5'.format(epoch=self._iteration))
         self.model.save_weights(save_name)
         return save_name
         # manager = tf.train.CheckpointManager(

@@ -1,0 +1,57 @@
+import pointnet.__main__
+import pointnet.train
+import pointnet.augment
+import pointnet.callbacks
+import pointnet.problems
+import pointnet.models
+import pointnet.callbacks
+import pointnet.keras_configurables
+import pointnet.util.path
+import pointnet.util.gpu_options
+
+run.fn = @train
+
+train.problem = %problem
+train.map_fn = %map_fn
+train.model_fn = %model_fn
+train.batch_size = %batch_size
+train.verbose = %verbose
+train.chkpt_callback = %chkpt_callback
+train.optimizer = %optimizer
+train.epochs = %epochs
+train.callbacks = %callbacks
+train.save_config = %save_config
+
+local_dir = @util.local_dir()
+util.local_dir.subdir = 'single'
+util.local_dir.run = %run
+util.local_dir.name = %name
+
+problem = @ModelnetProblem()
+map_fn = {
+    'train': @train/augment_cloud,
+    'validation': @validation/augment_cloud,
+}
+augment_cloud.rotate_scheme = %rotate_scheme
+augment_cloud.jitter_stddev = %jitter_stddev
+model_fn = @pointnet_classifier
+optimizer = @tf.keras.optimizers.Adam()
+
+chkpt_callback = @pointnet.callbacks.ModelCheckpoint()
+pointnet.callbacks.ModelCheckpoint.directory = %local_dir
+pointnet.callbacks.ModelCheckpoint.load_weights_on_restart = %resume
+
+callbacks = @pointnet.callbacks.get_additional_callbacks()
+pointnet.callbacks.get_additional_callbacks.log_dir = %local_dir
+
+batch_size = 32
+verbose = True
+epochs = 100
+save_config = True
+resume = True
+run = 0
+
+# typical configurations to overwrite
+rotate_scheme = 'random'
+jitter_stddev = None
+name = 'default'
