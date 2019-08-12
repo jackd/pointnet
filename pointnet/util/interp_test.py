@@ -14,17 +14,17 @@ class TestInterp(tf.test.TestCase):
 
     @run_in_graph_and_eager_modes()
     def test_intercepts3d(self):
-        grid = np.array(
-            [[0, 1, 2], [10, 11, 12], [20, 21, 22]], dtype=np.float32)
-        grid = np.stack([grid, grid+100, grid+200, grid+300])
+        grid = np.array([[0, 1, 2], [10, 11, 12], [20, 21, 22]],
+                        dtype=np.float32)
+        grid = np.stack([grid, grid + 100, grid + 200, grid + 300])
         coords = np.array([
             [1, 1, 1],
             [0, 1, 1],
-            ], dtype=np.float32)
+        ], dtype=np.float32)
         tf_vals = self.evaluate(linear_interp(grid, coords))
         expected = np.array([111, 11])
         np.testing.assert_allclose(tf_vals, expected)
-        shift = np.random.randn(*coords.shape)*1e-5
+        shift = np.random.randn(*coords.shape) * 1e-5
         max_shift = 1e-5
         too_big = np.abs(shift) > max_shift
         shift[too_big] *= max_shift / shift[too_big]
@@ -40,13 +40,13 @@ class TestInterp(tf.test.TestCase):
         np.testing.assert_allclose(actual, expected)
 
     def test_intercepts3d_batch(self):
-        grid = np.array(
-            [[0, 1, 2], [10, 11, 12], [20, 21, 22]], dtype=np.float32)
-        grid = np.stack([grid, grid+100, grid+200, grid+300])
+        grid = np.array([[0, 1, 2], [10, 11, 12], [20, 21, 22]],
+                        dtype=np.float32)
+        grid = np.stack([grid, grid + 100, grid + 200, grid + 300])
         coords = np.array([
             [1, 1, 1],
             [0, 1, 1],
-            ], dtype=np.float32)
+        ], dtype=np.float32)
         grid = np.stack([grid, grid + 1000])
         coords = np.stack([coords, coords])
         actual = self.evaluate(linear_interp(grid, coords))

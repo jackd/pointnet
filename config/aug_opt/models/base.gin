@@ -3,6 +3,7 @@ import pointnet.problems
 import pointnet.augment
 import pointnet.keras_configurables
 import pointnet.tune_model
+import pointnet.utils.gpu_options
 
 model_fn = @pointnet_classifier
 problem = @ModelnetProblem()
@@ -15,3 +16,5 @@ tf.keras.optimizers.SGD.momentum = 0.9
 
 augment_cloud.rotate_scheme = %rotate_scheme
 rotate_scheme = 'random'
+
+gpu_options.allow_growth = True

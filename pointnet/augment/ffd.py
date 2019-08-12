@@ -16,7 +16,7 @@ def _mesh(ranges):
 
 def bernstein_poly(n, v, stu):
     coeff = comb(n, v)
-    weights = coeff * ((1 - stu) ** (n - v)) * (stu ** v)
+    weights = coeff * ((1 - stu)**(n - v)) * (stu**v)
     return weights
 
 
@@ -25,11 +25,11 @@ def trivariate_bernstein(stu, lattice):
         raise ValueError('lattice must have shape (L, M, N, 3)')
     l, m, n = (d - 1 for d in lattice.shape[:3])
     lmn = np.array([l, m, n], dtype=np.int32)
-    v = np.stack(np.meshgrid(
-        np.arange(l, dtype=np.int32),
-        np.arange(m, dtype=np.int32),
-        np.arange(n, dtype=np.int32),
-        indexing='ij'), axis=-1)
+    v = np.stack(np.meshgrid(np.arange(l, dtype=np.int32),
+                             np.arange(m, dtype=np.int32),
+                             np.arange(n, dtype=np.int32),
+                             indexing='ij'),
+                 axis=-1)
     stu = np.reshape(stu, (-1, 1, 1, 1, 3))
     weights = bernstein_poly(n=lmn, v=v, stu=stu)
     weights = tf.reduce_prod(weights, axis=-1, keepdims=True)
@@ -42,7 +42,7 @@ def xyz_to_stu(xyz, origin, stu_axes):
         # raise ValueError(
         #     'stu_axes should have shape (3,), got %s' % str(stu_axes.shape))
     # s, t, u = np.diag(stu_axes)
-    assert(stu_axes.shape == (3, 3))
+    assert (stu_axes.shape == (3, 3))
     s, t, u = tf.unstack(stu_axes, axis=0)
     tu = tf.linalg.cross(t, u)
     su = tf.linalg.cross(s, u)
@@ -52,17 +52,18 @@ def xyz_to_stu(xyz, origin, stu_axes):
 
     # TODO: vectorize? np.dot(diff, [tu, su, st]) / ...
     stu = tf.stack([
-        tf.reduce_sum(diff*tu, axis=-1) / tf.reduce_sum(s*tu, axis=-1),
-        tf.reduce_sum(diff*su, axis=-1) / tf.reduce_sum(t*su, axis=-1),
-        tf.reduce_sum(diff*st, axis=-1) / tf.reduce_sum(u*st, axis=-1)
-    ], axis=-1)
+        tf.reduce_sum(diff * tu, axis=-1) / tf.reduce_sum(s * tu, axis=-1),
+        tf.reduce_sum(diff * su, axis=-1) / tf.reduce_sum(t * su, axis=-1),
+        tf.reduce_sum(diff * st, axis=-1) / tf.reduce_sum(u * st, axis=-1)
+    ],
+                   axis=-1)
     return stu
 
 
 def stu_to_xyz(stu_points, stu_origin, stu_axes):
     if stu_axes.shape != (3,):
         raise NotImplementedError()
-    return stu_origin + stu_points*stu_axes
+    return stu_origin + stu_points * stu_axes
 
 
 def get_stu_control_points(dims):
@@ -77,15 +78,14 @@ def get_control_points(dims, stu_origin, stu_axes):
 
 
 def get_stu_deformation_matrix(stu, dims):
-    v = np.stack(np.meshgrid(
-        *(np.arange(0, d, dtype=np.int32) for d in dims),
-        indexing='ij'), axis=-1)
+    v = np.stack(np.meshgrid(*(np.arange(0, d, dtype=np.int32) for d in dims),
+                             indexing='ij'),
+                 axis=-1)
     v = np.reshape(v, (-1, 3))
 
-    weights = bernstein_poly(
-        n=np.array(dims, dtype=np.int32),
-        v=v,
-        stu=tf.expand_dims(stu, axis=-2))
+    weights = bernstein_poly(n=np.array(dims, dtype=np.int32),
+                             v=v,
+                             stu=tf.expand_dims(stu, axis=-2))
 
     b = tf.reduce_prod(weights, axis=-1)
     return b

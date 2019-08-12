@@ -8,10 +8,9 @@ import tensorflow as tf
 
 
 @gin.configurable(module='util')
-def gpu_options(
-        allow_growth=None,
-        per_process_gpu_memory_fraction=None,
-        cuda_visible_devices=None):
+def gpu_options(allow_growth=None,
+                per_process_gpu_memory_fraction=None,
+                cuda_visible_devices=None):
     if cuda_visible_devices is not None:
         if isinstance(cuda_visible_devices, int):
             cuda_visible_devices = str(cuda_visible_devices)

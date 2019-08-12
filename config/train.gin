@@ -1,0 +1,48 @@
+import pointnet.cli.main
+import pointnet.train
+import pointnet.callbacks
+import pointnet.util.gpu_options
+import pointnet.util.path
+
+main = @train
+proc_title = 'pointnet-train'
+
+train.problem = %problem
+train.model_fn = %model_fn
+train.batch_size = %batch_size
+train.verbose = %verbose
+train.optimizer = %optimizer
+train.epochs = %epochs
+train.callbacks = %callbacks
+train.chkpt_callback = %chkpt_callback
+train.fresh = %fresh
+
+callbacks = @pointnet.callbacks.get_additional_callbacks()
+pointnet.callbacks.get_additional_callbacks.terminate_on_nan = True
+pointnet.callbacks.get_additional_callbacks.log_dir = %local_dir
+pointnet.callbacks.get_additional_callbacks.lr_schedule = %lr_schedule
+pointnet.callbacks.get_additional_callbacks.save_config = %save_config
+
+save_config = True
+resume = True
+fresh = False
+epochs = 100
+
+local_dir = @util.local_dir()
+util.local_dir.subdir = 'train'
+util.local_dir.run = %run
+util.local_dir.name = %name
+
+# chkpt_callback = @pointnet.callbacks.CheckpointCallback()
+# pointnet.callbacks.CheckpointCallback.directory = %local_dir
+# pointnet.callbacks.CheckpointCallback.load_weights_on_restart = %resume
+
+chkpt_callback = @pointnet.callbacks.ModelCheckpoint()
+pointnet.callbacks.ModelCheckpoint.directory = %local_dir
+pointnet.callbacks.ModelCheckpoint.load_weights_on_restart = %resume
+
+include 'models/default.gin'
+
+run = 0
+verbose = True
+name = 'default'

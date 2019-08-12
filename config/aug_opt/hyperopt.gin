@@ -1,0 +1,5 @@
+aug_opt.search_alg = @HyperOptSearch()
+HyperOptSearch.space = @search_space()
+
+tune_config.inner_mutable_bindings = None
+util.local_dir.subname = 'hyperopt'

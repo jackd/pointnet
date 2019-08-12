@@ -1,0 +1,19 @@
+include 'aug_opt/base.gin'
+import pointnet.callbacks
+
+util.local_dir.subdir = 'aug_opt/ahb'
+scheduler.cls = @AsyncHyperBandScheduler
+AsyncHyperBandScheduler.max_t = 250
+train_spec.num_samples = 50
+
+# consider also:
+# random_bindings - to determine which bindings to mutate
+tune_config.inner_mutable_bindings = @random_bindings()
+
+inner_config = 'models/default.gin'
+inner_bindings = [
+    'optimizer=@tf.keras.optimizers.Adam()',
+    'lr_schedule=@original_lr_schedule',
+]
+
+name = 'ahb'

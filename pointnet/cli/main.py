@@ -11,62 +11,60 @@ from pointnet.cli import config
 import tempfile
 
 flags.DEFINE_string(
-    'action',
-    default=None,
-    help='function to run. Must be in `pointnet.cli.config.ACTION_CONFIGS`')
-flags.DEFINE_string(
     'config_dir',
     default=None,
     help='Root config directory. See `pointnet.cli.config.get_config_dir`')
 flags.DEFINE_multi_string(
-    'imports',
-    default=None,
-    help='list of modules to import before looking up action.')
-flags.DEFINE_multi_string(
-    'config_files',
-    default=None,
+    'files',
+    default=[],
     help='List of paths to the config files relative to `config_dir`.')
-flags.DEFINE_multi_string(
-    'bindings',
-    default=None,
-    help='List/newline separated config params.')
-flags.DEFINE_string('proc_title', default=None, help='process title')
+flags.DEFINE_multi_string('bindings',
+                          default=[],
+                          help='List/newline separated config params.')
 FLAGS = flags.FLAGS
 
+UNIVERSAL = '''
+set_proc_title.title = %proc_title
+run.fn = %main
 
-def set_proc_title(title):
+proc_title = 'pointnet'
+main = None
+'''
+
+
+@gin.configurable
+def set_proc_title(title=None):
     if title is not None:
         try:
-            import prctl
-            prctl.set_proctitle(title)
+            import setproctitle
+            setproctitle.setproctitle(title)
         except ImportError:
-            logging.warning('Failed to import prctl - cannot change title.')
+            logging.warning(
+                'Failed to import setproctitle - cannot change title.')
 
 
 @gin.configurable
 def run(fn=None):
     if fn is None:
         logging.warning('No `run.fn` configured. Exiting')
-        exit()
-    fn()
+    else:
+        fn()
 
 
-def run_main(_):
-    proc_title = FLAGS.proc_title
-    if proc_title is None:
-        proc_title = 'pointnet-{}'.format(FLAGS.action)
-    set_proc_title(proc_title)
-    config_files = FLAGS.config_files
-    if config_files is not None:
-        config_files = [
-            gf if gf.endswith('.gin') else '{}.gin'.format(gf)
-            for gf in config_files]
+def run_main(args):
+    set_proc_title()
+
+    files = list(FLAGS.files)
+    bindings = list(FLAGS.bindings)
+    for arg in args[1:]:
+        (bindings if '=' in arg else files).append(arg)
+    gin.parse_config(UNIVERSAL)
+
+    files = [gf if gf.endswith('.gin') else '{}.gin'.format(gf) for gf in files]
     config.parse_config(
         config_dir=FLAGS.config_dir,
-        config_files=config_files,
-        bindings=FLAGS.bindings,
-        action=FLAGS.action,
-        imports=FLAGS.imports,
+        config_files=files,
+        bindings=bindings,
     )
     run()
 

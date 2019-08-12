@@ -1,0 +1,3 @@
+import pointnet.problems
+
+ModelnetProblem.use_train_test_split = True

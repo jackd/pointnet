@@ -2,12 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import os
-from pointnet.tune_model import TuneModel
+from pointnet.tune_model import GinTuneModel
 import tensorflow as tf
 
 config = {
     # 'batch_size': 2,  # SMOKE-TEST
-    'batch_size': 32,
+    'batch_size':
+        32,
     'problem': {
         'name': 'modelnet40',
     },
@@ -31,11 +32,12 @@ config = {
     'model_fn': {
         'name': 'pointnet_classifier'
     },
-    'optimizer': tf.keras.utils.serialize_keras_object(
-        tf.keras.optimizers.SGD(momentum=0.9, lr=1e-3, nesterov=True))
+    'optimizer':
+        tf.keras.utils.serialize_keras_object(
+            tf.keras.optimizers.SGD(momentum=0.9, lr=1e-3, nesterov=True))
 }
 
-tune_model = TuneModel(config=config)
+tune_model = GinTuneModel(config=config)
 checkpoint_dir = '/tmp/test_tune_model'
 if not os.path.isdir(checkpoint_dir):
     os.makedirs(checkpoint_dir)

@@ -1,0 +1,11 @@
+import pointnet.cli.main
+import pointnet.train
+
+main = @evaluate_directory
+evaluate_directory.model_dir = %model_dir
+evaluate_directory.split = %split
+evaluate_directory.eval_batch_size = %eval_batch_size
+
+eval_batch_size = None
+split = 'validation'
+model_dir = './'

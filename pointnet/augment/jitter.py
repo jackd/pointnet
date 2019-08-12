@@ -27,8 +27,7 @@ def jitter_positions(positions, stddev=0.02, clip=None):
 
 
 @gin.configurable(blacklist=['normals'])
-def jitter_normals(
-        normals, stddev=0.02, clip=None, some_normals_invalid=False):
+def jitter_normals(normals, stddev=0.02, clip=None, some_normals_invalid=False):
     if stddev == 0 or stddev is None:
         return normals
     normals = jitter_positions(normals, stddev, clip)
@@ -36,7 +35,7 @@ def jitter_normals(
     if some_normals_invalid:
         # some normals might be invalid, in which case they'll initially be 0.
         thresh = 0.1 if clip is None else 1 - clip
-        return tf.where(
-            tf.less(norms, thresh), tf.zeros_like(normals), normals / norms)
+        return tf.where(tf.less(norms, thresh), tf.zeros_like(normals),
+                        normals / norms)
     else:
         return normals / norms

@@ -26,13 +26,12 @@ def _rotate(positions, normals=None, angle=None, impl=tf):
         angle = tf.random.uniform((), dtype=dtype) * (2 * np.pi)
 
     if normals is not None:
-        assert(normals.dtype == dtype)
+        assert (normals.dtype == dtype)
     c = impl.cos(angle)
     s = impl.sin(angle)
     # multiply on right, use non-standard rotation matrix (-s and s swapped)
     rotation_matrix = impl.reshape(
-        impl.stack([c, -s, 0.0, s, c, 0.0, 0.0, 0.0, 1.0]),
-        (3, 3))
+        impl.stack([c, -s, 0.0, s, c, 0.0, 0.0, 0.0, 1.0]), (3, 3))
 
     positions = impl.matmul(positions, rotation_matrix)
     if normals is None:
@@ -78,7 +77,7 @@ def rotate_by_scheme(positions, normals=None, scheme='random'):
         from pointnet.augment import pca
         angle = pca.get_pca_xy_angle(positions)
     elif scheme == 'random':
-        angle = tf.random.uniform(shape=(), dtype=positions.dtype) * (2*np.pi)
+        angle = tf.random.uniform(shape=(), dtype=positions.dtype) * (2 * np.pi)
     else:
         raise ValueError('Unrecognized scheme "%s"' % scheme)
     return rotate(positions, normals, angle)
@@ -97,10 +96,9 @@ def random_rigid_transform(points, normals=None, stddev=0.02, clip=None):
 @gin.configurable(blacklist=['positions', 'axis'])
 def maybe_reflect(positions, axis=-1, dim=0, prob=0.5):
     should_reflect = tf.random.uniform(shape=(), dtype=tf.float32) > prob
-    return tf.cond(
-        should_reflect,
-        lambda: reflect(positions, dim=dim, axis=axis),
-        lambda: positions)
+    return tf.cond(should_reflect,
+                   lambda: reflect(positions, dim=dim, axis=axis),
+                   lambda: positions)
 
 
 @gin.configurable(blacklist=['positions'])

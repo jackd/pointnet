@@ -8,12 +8,13 @@ _transforms = {}  # pylint: disable=unreachable
 
 
 def register_transform(name=None):
+
     def decorator(f):
         used_name = name or f.__name__
         if used_name in _transforms:
             raise KeyError(
-                'transform "%s" already registered - cannot overwrite'
-                % used_name)
+                'transform "%s" already registered - cannot overwrite' %
+                used_name)
         _transforms[used_name] = f
         return f
 
@@ -28,6 +29,7 @@ def deserialize(name_, **kwargs):
 def _assert_registered(name):
     if name not in _transforms:
         raise ValueError('name "%s" not registered' % name)
+
 
 # def deserialize(obj):
 #     # no nested dicts allowed
@@ -45,7 +47,6 @@ def _assert_registered(name):
 #         return _transforms[obj]
 #     else:
 #         raise ValueError('Cannot deserialize <%s> as transform' % str(obj))
-
 
 # def serialize(obj):
 #     if isinstance(obj, list):
@@ -83,7 +84,6 @@ def _register_default():
 
 _register_default()
 
-
 # def get_map_fn(transform=None, positions_only=True):
 #     transform = deserialize(transform)
 
@@ -109,7 +109,6 @@ _register_default()
 #         return positions, labels
 
 #     return fn
-
 
 # if __name__ == '__main__':
 #     # import trimesh

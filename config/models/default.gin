@@ -1,0 +1,30 @@
+import pointnet.problems
+import pointnet.models
+import pointnet.util.gpu_options
+import pointnet.util.path
+import pointnet.keras_configurables
+import pointnet.augment
+import pointnet.callbacks
+
+problem = @ModelnetProblem()
+ModelnetProblem.map_fn = %map_fn
+map_fn = {
+    'train': @train/augment_cloud,
+    'validation': @validation/augment_cloud,
+}
+augment_cloud.rotate_scheme = %rotate_scheme
+train/augment_cloud.jitter_stddev = %jitter_stddev
+
+batch_size = 32
+
+# typical configurations to overwrite
+model_fn = @pointnet_classifier
+optimizer = @tf.keras.optimizers.Adam()
+
+rotate_scheme = 'random'
+jitter_stddev = None
+
+name = 'default'
+lr_schedule = None
+
+gpu_options.allow_growth = True

@@ -1,25 +1,25 @@
-import pointnet.__main__
+import pointnet.cli.main
 import pointnet.aug_opt
 import pointnet.util.path
 
-run.fn = @aug_opt
+PopulationBasedTraining.perturbation_interval = %perturbation_interval
+perturbation_interval = 5
+
+main = @aug_opt
 train_spec.local_dir = @util.local_dir()
 util.local_dir.subdir = 'aug_opt'
 util.local_dir.name = %name
 
 aug_opt.name = %name
+aug_opt.scheduler = @scheduler()
 aug_opt.train_spec = @train_spec()
-train_spec.outer_config = @outer_config()
-outer_config.inner_config_files = %inner_config
-outer_config.inner_bindings = %inner_bindings
-
-# consider also:
-# mutable_bindings - to determine which bindings to mutate
+aug_opt.resume = %resume
+train_spec.tune_config = @tune_config()
+tune_config.inner_config_files = %inner_config
+tune_config.inner_bindings = %inner_bindings
 
 # core configurables
-inner_config = 'aug_opt/models/base.gin'
 inner_bindings = []
-name = 'default'
 
 aug_opt.num_cpus = %num_cpus
 aug_opt.num_gpus = %num_gpus
@@ -32,5 +32,8 @@ num_cpus = None
 num_gpus = None
 
 # customize as necessary
-cpus_per_trial = 4
-gpus_per_trial = 1
+cpus_per_trial = 2
+gpus_per_trial = 0.4
+
+resume = True
+name = 'base'

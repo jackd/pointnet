@@ -3,15 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 from absl import logging
-import ray
-from ray import tune
-from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune import Trainable
 import tensorflow as tf
 import os
 import gin
 import functools
 import six
 import tempfile
+import time
 
 from pointnet import problems
 from pointnet import models
@@ -19,6 +18,52 @@ from pointnet import augment as aug
 import gin
 from pointnet.cli.config import parse_config
 from pointnet.util.gpu_options import gpu_options
+from pointnet import train
+from pointnet import callbacks as cb
+tf.compat.v1.enable_eager_execution()  # required for hparams callback
+
+
+def get_tensorboard_hparams(rotate_scheme=('random', 'pca-xy'),
+                            maybe_reflect_x=(False, True),
+                            jitter=True,
+                            scale=True,
+                            rigid_transform=True,
+                            perlin=True):
+    from tensorboard.plugins.hparams import api as hp
+    hparams = {}
+    if isinstance(rotate_scheme, (list, tuple)):
+        hparams['augment_cloud.rotate_scheme'] = hp.HParam(
+            'rotate_scheme', hp.Discrete(rotate_scheme))
+    if isinstance(maybe_reflect_x, (list, tuple)):
+        hparams['train/augment_cloud.maybe_reflect_x'] = hp.HParam(
+            'maybe_reflect_x', hp.Discrete(maybe_reflect_x))
+    if jitter:
+        hparams['train/augment_cloud.jitter_stddev'] = hp.HParam(
+            'jitter_stddev', hp.RealInterval(1e-5, 1e-1))
+    if scale:
+        hparams['train/augment_cloud.scale_stddev'] = hp.HParam(
+            'scale', hp.RealInterval(1e-5, 2e-1))
+    if rigid_transform:
+        hparams['train/augment_cloud.rigid_transform_stddev'] = hp.HParam(
+            'rigid_transform', hp.RealInterval(1e-5, 1e-1))
+    if perlin:
+        hparams['train/augment_cloud.perlin_grid_shape'] = hp.HParam(
+            'perlin_grid_shape', hp.IntInterval(2, 5))
+        hparams['train/augment_cloud.perlin_stddev'] = hp.HParam(
+            'perlin_stddev', hp.RealInterval(1e-3, 0.5))
+    return hparams
+
+
+def get_tensorboard_hparams_callback(value_dict, log_dir):
+    from tensorboard.plugins.hparams import api as hp
+    key_dict = get_tensorboard_hparams()
+    hparams = {key_dict[k]: v for k, v in value_dict.items()}
+    return hp.KerasCallback(log_dir, hparams)
+
+
+@gin.configurable
+def not_implemented_fn(*args, **kwargs):
+    raise NotImplementedError()
 
 
 @gin.configurable
@@ -42,39 +87,57 @@ def batch_size(value=32):
 
 
 @gin.configurable
-def model_fn(
-        fn=lambda inputs, training, output_spec: tf.keras.Model(
-            inputs=inputs)):
-    return fn
-
-
-def _default_map_fn(inputs, labels):
-    return inputs, labels
-
-
-@gin.configurable
-def initial_weights_path(value=None):
-    return value
-
-
-@gin.configurable
-def train_map_fn(fn=None):
+def model_fn(fn=not_implemented_fn):
     return fn
 
 
 @gin.configurable
-def validation_map_fn(fn=None):
+def learning_rate_schedule(fn=not_implemented_fn):
     return fn
 
 
-TUNE_MODEL_CONFIG = os.path.join(os.path.dirname(__file__), 'tune_model.gin')
+TUNE_MODEL_CONFIG = '''
+problem.value = %problem
+optimizer.value = %optimizer
+batch_size.value = %batch_size
+model_fn.fn = %model_fn
+learning_rate_schedule.fn = %lr_schedule
+'''
 
 
-class TuneModel(tune.Trainable):
+def operative_config_path(log_dir, iteration=0):
+    return os.path.join(log_dir, 'operative_config{}.gin'.format(iteration))
+
+
+def parse_operative_config_path(path):
+    log_dir, filename = os.path.split(path)
+    iteration = int(filename[len('operative_config'):-4])
+    return log_dir, iteration
+
+
+def _parse_config_item(key, value):
+    if isinstance(value, dict):
+        for k, v in value.items():
+            _parse_config_item(k, v)
+        return
+    elif isinstance(value, (list, tuple)):
+        for k, v in value:
+            _parse_config_item(k, v)
+    elif value is None:
+        return
+    else:
+        assert (key is not None)
+        # if isinstance(value, six.string_types):
+        #     gin.bind_parameter(key, '"{}"'.format(value))
+        # else:
+        gin.bind_parameter(key, value)
+
+
+class GinTuneModel(Trainable):
     """
-    Experiments are configured almost entirely via gin.
+    Experiments are configured entirely via gin.
 
-    see `tune_model.gin` for macros to override.
+    see `TUNE_MODEL_CONFIG` for macros to override.
 
     config dictionary passed to constructor should have
         str             config_dir
@@ -83,7 +146,7 @@ class TuneModel(tune.Trainable):
         Dict<string, ?> mutable_bindings (presumably changed each mutation)
         int             verbosity
 
-    Mutations are expected in mutable_bindings, and should also provide the
+    Mutations are expected in `mutable_bindings`, and should also provide the
     flags (assumed `False` if absent)
         bool reset_optimizer
         bool reset_problem
@@ -98,23 +161,28 @@ class TuneModel(tune.Trainable):
         logging.set_verbosity(config.get('verbosity', logging.INFO))
 
         logging.info("calling setup")
-        mutable_bindings = [
-            '{} = {}'.format(left, right)
-            for left, right in config['mutable_bindings'].items()]
-        bindings = config['bindings'] + mutable_bindings
         config_files = config['config_files']
         if isinstance(config_files, six.string_types):
             config_files = [config_files]
-        config_files = [TUNE_MODEL_CONFIG] + config_files
-        parse_config(config['config_dir'], config_files, bindings)
+
+        with gin.unlock_config():
+            gin.parse_config(TUNE_MODEL_CONFIG)
+            parse_config(config['config_dir'],
+                         config_files,
+                         config['bindings'],
+                         finalize_config=False)
+            _parse_config_item(None, config['mutable_bindings'])
+            gin.finalize()
         gpu_options()
 
         self._generators = None
         self._problem = None
         self._optimizer = None
         self._model = None
+        self._lr_schedule = learning_rate_schedule()
+        self._reset_callbacks()
 
-        wp = initial_weights_path()
+        wp = config.get('initial_weights_path', None)
         if wp is not None:
             self.model.load_weights(wp)
 
@@ -128,6 +196,7 @@ class TuneModel(tune.Trainable):
             self._problem = None
             self._optimizers = None
             self._model = None
+            self.model  # force creation via getter
             self._restore(checkpoint)
 
     @property
@@ -139,14 +208,12 @@ class TuneModel(tune.Trainable):
     @property
     def generators(self):
         if self._generators is None:
-            map_fns = {
-                'train': train_map_fn(),
-                'validation': validation_map_fn(),
+            self._generators = {
+                k: self.problem.get_generator(split=k,
+                                              batch_size=self.batch_size,
+                                              repeats=None)
+                for k in ('train', 'validation')
             }
-            self._generators = {k: self.problem.get_generator(
-                split=k,
-                batch_size=self.batch_size,
-                map_fn=map_fns[k]) for k in ('train', 'validation')}
         return self._generators
 
     @property
@@ -161,11 +228,12 @@ class TuneModel(tune.Trainable):
             # this ensure spurious errors caused by batch norm state being out
             # of sync do not unfairly punish potentially good performing models
             self._model = model_fn()(  # pylint: disable=not-callable
-                inputs, training=True, output_spec=self.problem.output_spec)
-            self._model.compile(
-                loss=self.problem.loss,
-                metrics=self.problem.metrics,
-                optimizer=self.optimizer)
+                inputs,
+                training=True,
+                output_spec=self.problem.output_spec)
+            self._model.compile(loss=self.problem.loss,
+                                metrics=self.problem.metrics,
+                                optimizer=self.optimizer)
         return self._model
 
     @property
@@ -185,24 +253,34 @@ class TuneModel(tune.Trainable):
         """Runs one epoch of training, and returns current epoch accuracies."""
         logging.info("training for iteration: {}".format(self._iteration))
         epoch = self._iteration
+        if self._lr_schedule is not None:
+            tf.keras.backend.set_value(self.model.optimizer.lr,
+                                       self._lr_schedule(epoch))
+
         generators = self.generators
+        t = time.time()
         history = self.model.fit(
             generators['train'],
-            epochs=epoch+1,
+            epochs=epoch + 1,
             initial_epoch=epoch,
             validation_data=generators['validation'],
             steps_per_epoch=self.steps_per_epoch('train'),
             validation_steps=self.steps_per_epoch('validation'),
-            verbose=False
-        )
+            verbose=False,
+            callbacks=self._callbacks)
+        dt = time.time() - t
+        time_str = 'Step took {:.2f}s'.format(dt)
         vals = {k: v[-1] for k, v in history.history.items()}
-        vals_str = '\n'.join('%-35s: %f' % (k, vals[k]) for k in sorted(vals))
-        logging.info(
-            "finished iteration {}\n{}".format(self._iteration, vals_str))
+        vals_str = '\n'.join(
+            '{:35s}: {:f}'.format(k, vals[k]) for k in sorted(vals))
+        logging.info("finished iteration {}\n{}\n{}".format(
+            self._iteration, vals_str, time_str))
         return vals
 
     def _save(self, checkpoint_dir):
         """Uses tf trainer object to checkpoint."""
+        if not tf.io.gfile.isdir(checkpoint_dir):
+            tf.io.gfile.makedirs(checkpoint_dir)
         save_name = os.path.join(
             checkpoint_dir,
             'model-{epoch:05d}.h5'.format(epoch=self._iteration))
@@ -230,16 +308,22 @@ class TuneModel(tune.Trainable):
         # calling these setters ensures the operative config is complete
         self.generators
         self.model
-        path = os.path.join(
-            self.logdir, 'operative_config{}.gin'.format(self._iteration))
+        if not tf.io.gfile.isdir(self.logdir):
+            tf.io.gfile.makedirs(self.logdir)
+        path = operative_config_path(self.logdir, self._iteration)
         with open(path, 'w') as fp:
             fp.write(gin.operative_config_str())
+
+    def _reset_callbacks(self):
+        self._callbacks = [
+            get_tensorboard_hparams_callback(self.config['mutable_bindings'],
+                                             self.logdir)
+        ]
 
     def reset_config(self, new_config):
         """Resets trainer config for fast PBT implementation."""
         with gin.unlock_config():
-            for k, v in new_config['mutable_bindings'].items():
-                gin.bind_parameter(k, v)
+            _parse_config_item(None, new_config['mutable_bindings'])
 
         if new_config.get('reset_session'):
             self.reset()
@@ -258,134 +342,35 @@ class TuneModel(tune.Trainable):
                     self._model = None
                     self._restore(checkpoint)
         self.config = new_config
+        self._reset_callbacks()
         self._save_operative_config()
         return True
 
 
+@gin.configurable
+def evaluate_tune(log_dir,
+                  split='validation',
+                  verbose=True,
+                  eval_batch_size=None):
+    log_dir = os.path.realpath(os.path.expanduser(os.path.expandvars(log_dir)))
+    paths = [os.path.join(log_dir, d) for d in tf.io.gfile.listdir(log_dir)]
+    op_configs = [d for d in paths if d.endswith('.gin')]
+    op_config = max(op_configs, key=lambda x: parse_operative_config_path(x)[1])
+    dirs = [d for d in paths if tf.io.gfile.isdir(d)]
+    final_dir = max(dirs, key=lambda x: int(x.split('_')[-1]))
+    logging.info('Using operative_config {}, checkpoint {}'.format(
+        op_config, final_dir))
 
+    with gin.unlock_config():
+        gin.parse_config_file(op_config)
+    chkpt_callback = cb.ModelCheckpoint(final_dir)
+    if eval_batch_size is None:
+        eval_batch_size = batch_size()
 
-
-# class TuneModel(tune.Trainable):
-
-#     def _setup(self, *args):
-#         logging.set_verbosity(logging.INFO)
-#         logging.info("calling setup")
-#         self._reset()
-
-#     def _stop(self):
-#         tf.keras.backend.clear_session()
-
-#     def _reset(self, save_path=None):
-#         tf.keras.backend.clear_session()
-#         self.problem = problems.deserialize(**self.config['problem'])
-#         self.datasets = {
-#             k: self.problem.get_dataset(
-#                 split=k,
-#                 batch_size=self.batch_size,
-#                 map_fn=functools.partial(
-#                     aug.flat_augment_cloud,
-#                     **self.config['augmentation_spec'][k]))
-#                 for k in ('train', 'validation')}
-#         inputs = tf.nest.map_structure(
-#                 lambda x: tf.keras.layers.Input(shape=x.shape, dtype=x.dtype),
-#                 self.problem.input_spec)
-
-#         optimizer = tf.keras.optimizers.deserialize(self.config['optimizer'])
-
-#         # create/compile model and checkpoint
-#         # note: we use training=True even during evaluation
-#         # this ensure spurious errors caused by batch norm state being out of
-#         # sync do not unfairly punish potentially good performing models
-
-#         self.model = models.deserialize(
-#             inputs, training=True, output_spec=self.problem.output_spec,
-#             **self.config['model_fn'])
-#         self.model.compile(
-#             loss=self.problem.loss,
-#             metrics=self.problem.metrics,
-#             optimizer=optimizer,
-#         )
-#         if save_path is not None:
-#             self.model.load_weights(save_path)
-
-#     @property
-#     def batch_size(self):
-#         return self.config['batch_size']
-
-#     def steps_per_epoch(self, split):
-#         return self.problem.examples_per_epoch(split) // self.batch_size
-
-#     def _train(self):
-#         """Runs one epoch of training, and returns current epoch accuracies."""
-#         logging.info("training for iteration: {}".format(self._iteration))
-#         epoch = self._iteration
-#         datasets = self.datasets
-#         history = self.model.fit(
-#             datasets['train'],
-#             epochs=epoch+1,
-#             initial_epoch=epoch,
-#             validation_data=datasets['validation'],
-#             steps_per_epoch=self.steps_per_epoch('train'),
-#             validation_steps=self.steps_per_epoch('validation'),
-#             verbose=False
-#         )
-#         vals = {k: v[-1] for k, v in history.history.items()}
-#         vals_str = '\n'.join('%-35s: %f' % (k, vals[k]) for k in sorted(vals))
-#         logging.info(
-#             "finished iteration %d\n%s" % (self._iteration, vals_str))
-#         return vals
-
-#     def _save(self, checkpoint_dir):
-#         """Uses tf trainer object to checkpoint."""
-#         save_name = os.path.join(
-#             checkpoint_dir, 'model-%05d.h5' % self._iteration)
-#         self.model.save_weights(save_name)
-#         return save_name
-#         # manager = tf.train.CheckpointManager(
-#         #     self.checkpoint, directory=checkpoint_dir, max_to_keep=5)
-#         # manager.save(save_name)
-#         # save_path = manager.latest_checkpoint
-#         # logging.info("saved model {}".format(save_path))
-#         # return save_path
-
-#     def _restore(self, save_path):
-#         """Restores model from checkpoint."""
-#         logging.info("RESTORING: {}".format(save_path))
-#         self.model.load_weights(save_path)
-
-#         # self.model = tf.keras.models.load_model(save_path)
-#         # self.model.load_weights(save_path)
-#         # self.model = tf.keras.models.load_model(save_path)
-#         # status = self.checkpoint.restore(save_path)
-#         # status.assert_consumed()
-
-
-#     # def different(self, new_config, keys):
-#     #     if isinstance(keys, six.string_types):
-#     #         keys = keys,
-#     #     new_spec = new_config
-#     #     old_spec = self.config
-#     #     for k in keys:
-#     #         new_spec = new_spec[k]
-#     #         old_spec = old_spec[k]
-#     #     return new_spec != old_spec
-
-#     def reset_config(self, new_config):
-#         """Resets trainer config for fast PBT implementation."""
-#         # return False
-#         self.config = new_config
-#         path = '/tmp/tune_model_weights.h5'
-#         self.model.save_weights(path)
-#         self._reset(save_path=path)
-#         os.remove(path)
-#         return True
-
-
-#         # # if self.different(new_config, 'problem'):
-#         # #     self._reset_problem(new_config['problem'])
-#         # # if (self.different(new_config, 'batch_size') or
-#         # #     self.different(new_config, 'augmentation_spec')):
-#         # #     self.datasets = None
-#         # # if not hasattr(self, 'datasets') or self.datasets is None:
-#         # #     self._reset_datasets(rebuild_model=True)
-#         # return True
+    train.evaluate(problem(),
+                   model_fn(),
+                   optimizer(),
+                   eval_batch_size,
+                   chkpt_callback,
+                   split=split,
+                   verbose=verbose)

@@ -35,9 +35,11 @@ from pointnet.augment.rigid import maybe_reflect
 #         rotate_scheme=rotate_scheme,
 #         )
 
+
 @gin.configurable(blacklist=['inputs', 'labels'])
 def augment_cloud(
-        inputs, labels,
+        inputs,
+        labels,
         # jitter_positions_transform=jitter_positions,
         # jitter_normals=None,
         jitter_stddev=None,
@@ -47,7 +49,7 @@ def augment_cloud(
         perlin_grid_shape=None,
         perlin_stddev=0.25,
         rotate_scheme='none',
-    ):
+):
     if isinstance(inputs, dict):
         positions = inputs['positions']
         normals = inputs['normals']
@@ -67,38 +69,19 @@ def augment_cloud(
         positions = random_scale(positions, stddev=scale_stddev)
 
     if rigid_transform_stddev is not None:
-        positions = random_rigid_transform(
-            positions, stddev=rigid_transform_stddev)
+        positions = random_rigid_transform(positions,
+                                           stddev=rigid_transform_stddev)
 
     if maybe_reflect_x:
         positions = maybe_reflect(positions)
 
     if perlin_grid_shape is not None:
-        positions = add_perlin_noise(
-            positions, perlin_grid_shape, stddev=perlin_stddev)
+        positions = add_perlin_noise(positions,
+                                     perlin_grid_shape,
+                                     stddev=perlin_stddev)
 
     if rotate_scheme:
         positions = rotate_by_scheme(positions, scheme=rotate_scheme)
-
-    # for transform in (
-    #         jitter_positions_transform,
-    #         scale_transform,
-    #         rigid_transform,
-    #         reflect_transform,
-    #         perlin_transform,
-    #         ):
-    #     if transform is not None:
-    #         # if not callable(transform):
-    #         #     transform = trans.deserialize(transform)
-    #         positions = transform(positions)
-
-    # if rotate_transform is not None:
-    #     # if not callable(rotate_transform):
-    #     #     rotate_transform = trans.deserialize(rotate_transform)
-    #     if positions_only:
-    #         positions = rotate_transform(positions)
-    #     else:
-    #         positions, normals = rotate_transform(positions, normals)
 
     if positions_only:
         inputs = positions
@@ -106,6 +89,26 @@ def augment_cloud(
         inputs = dict(positions=positions, normals=normals)
     return inputs, labels
 
+
+# @gin.configurable
+# def augment_cloud_fn(
+#         jitter_stddev=None,
+#         scale_stddev=None,
+#         rigid_transform_stddev=None,
+#         maybe_reflect_x=False,
+#         perlin_grid_shape=None,
+#         perlin_stddev=0.25,
+#         rotate_scheme='none',):
+#     # this version forces operative config to be up-to-date be
+#     return functools.partial(
+#         augment_cloud,
+#         jitter_stddev=jitter_stddev,
+#         scale_stddev=scale_stddev,
+#         rigid_transform_stddev=rigid_transform_stddev,
+#         maybe_reflect_x=maybe_reflect_x,
+#         perlin_grid_shape=perlin_grid_shape,
+#         perlin_stddev=perlin_stddev,
+#         rotate_scheme=rotate_scheme)
 
 # @gin.configurable
 # def pack_augmentation_parameters(
@@ -152,12 +155,10 @@ def augment_cloud(
 
 #     return kwargs
 
-
 # @gin.configurable
 # def flat_augment_cloud(inputs, labels, **kwargs):
 #     return augment_cloud(
 #         inputs, labels, **(pack_augmentation_parameters(**kwargs)))
-
 
 # @gin.configurable
 # def deserialize(name='flat_augment_cloud', **kwargs):

@@ -1,13 +1,14 @@
 inner_bindings = [
     'ModelnetProblem.num_examples_override=10',
     'batch_size=2',
-    'rotate_scheme="pca-xy"',
 ]
 
 train_spec.num_samples = 2
 train_spec.max_epochs = 5
-aug_opt.perturbation_interval = 1
 aug_opt.resume = False
-aug_opt.clean = True
+aug_opt.fresh = True
+aug_opt.local_mode = True
+
+perturbation_interval = 1
 
 name = 'smoke-test'

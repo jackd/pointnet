@@ -1,0 +1,19 @@
+include 'aug_opt/base.gin'
+
+util.local_dir.subdir = 'aug_opt/pbt'
+scheduler.cls = @PopulationBasedTraining
+PopulationBasedTraining.custom_explore_fn = @custom_explore
+PopulationBasedTraining.log_config = True
+
+# consider also:
+# mutable_bindings - to determine which bindings to mutate
+@tune_config.inner_mutable_bindings = @mutable_bindings()
+
+inner_config = 'aug_opt/models/base.gin'
+inner_bindings = [
+    'optimizer=@tf.keras.optimizers.SGD()',
+    'tf.keras.optimizers.SGD.momentum=0.9',
+    'lr_schedule=None',
+]
+
+name = 'pbt'

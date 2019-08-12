@@ -19,20 +19,18 @@ def _register_callables(package, module, blacklist):
 
 
 blacklist = set(('serialize', 'deserialize', 'get'))
-for package, module in (
-        (tf.keras.losses, 'tf.keras.losses'),
-        (tf.keras.metrics, 'tf.keras.metrics'),
-        (tf.keras.optimizers, 'tf.keras.optimizers'),
-        (tf.keras.regularizers, 'tf.keras.regularizers')
-        ):
+for package, module in ((tf.keras.losses, 'tf.keras.losses'),
+                        (tf.keras.metrics, 'tf.keras.metrics'),
+                        (tf.keras.optimizers, 'tf.keras.optimizers'),
+                        (tf.keras.regularizers, 'tf.keras.regularizers')):
     _register_callables(package, module, blacklist)
 
 if tf_compat.major == 1:
     for package, module in (
-            (tf.keras.callbacks, 'tf.keras.callbacks'),
-            (tf.keras.constraints, 'tf.keras.constraints'),
-            (tf.keras.layers, 'tf.keras.layers'),
-            ):
+        (tf.keras.callbacks, 'tf.keras.callbacks'),
+        (tf.keras.constraints, 'tf.keras.constraints'),
+        (tf.keras.layers, 'tf.keras.layers'),
+    ):
         _register_callables(package, module, blacklist)
 
 # clean up namespace

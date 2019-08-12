@@ -26,3 +26,11 @@ python -m pointnet --action=train --config_files=single/base --bindings='
     name="pca-xy_j1e-2"
 '
 ```
+
+## Project Maintenance
+
+Format with [`yapf`](https://github.com/google/yapf), `google` style.
+
+```bash
+ yapf --style=google -i -r .
+```

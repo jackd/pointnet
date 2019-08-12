@@ -5,16 +5,8 @@ from __future__ import print_function
 from setuptools import setup
 from setuptools import find_packages
 
-
 with open('requirements.txt') as fp:
     install_requires = fp.read().split('\n')
-
-
-ACTION_CONFIGS = [
-    'cli/action_configs/*',
-    'tune_model.gin',
-]
-
 
 setup(
     name='pointnet',
@@ -27,5 +19,4 @@ setup(
     packages=find_packages(),
     requirements=install_requires,
     zip_safe=True,
-    package_data={'pointnet': ACTION_CONFIGS}
 )

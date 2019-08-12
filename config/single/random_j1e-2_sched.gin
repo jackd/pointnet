@@ -1,4 +1,0 @@
-rotate_scheme = 'random'
-jitter_stddev = 1e-2
-pointnet.callbacks.get_additional_callbacks.lr_schedule = @original_lr_schedule
-name = 'random_j1e-2_sched'

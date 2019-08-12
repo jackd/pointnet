@@ -4,6 +4,5 @@ from __future__ import print_function
 
 from pointnet.cli.main import main
 
-
 if __name__ == '__main__':
     main()

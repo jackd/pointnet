@@ -20,6 +20,5 @@ g.fn = %c
 c = @f
 '''
 
-
 gin.parse_config(conf)
 g()

@@ -7,19 +7,24 @@ import functools
 import gin
 layers = tf.keras.layers
 
+
 def value(dim):
     return getattr(dim, 'value', dim)  # TF-COMPAT
 
 
 def transform_diff(transform):
-    return (
-        tf.matmul(transform, transform, transpose_b=True) -
-        tf.eye(value(transform.shape[-1])))  # TF-COMPAT
+    return (tf.matmul(transform, transform, transpose_b=True) -
+            tf.eye(value(transform.shape[-1])))  # TF-COMPAT
 
 
 @gin.configurable(blacklist=['x', 'units', 'training'])
-def mlp(x, units, training=None, use_batch_norm=True,
-        batch_norm_momentum=0.99, dropout_rate=0, activation='relu'):
+def mlp(x,
+        units,
+        training=None,
+        use_batch_norm=True,
+        batch_norm_momentum=0.99,
+        dropout_rate=0,
+        activation='relu'):
     use_bias = not use_batch_norm
     for u in units:
         tf.keras.layers.Dense
@@ -40,11 +45,16 @@ def add_identity(x, num_dims=None):
 
 
 @gin.configurable(blacklist=['features', 'training'])
-def feature_transform_net(
-        features, num_dims, training=None, bn=True, batch_norm_momentum=0.99,
-        local_activation='relu', global_activation='relu',
-        local_units=(64, 128, 1024), global_units=(512, 256),
-        reduction=tf.reduce_max):
+def feature_transform_net(features,
+                          num_dims,
+                          training=None,
+                          bn=True,
+                          batch_norm_momentum=0.99,
+                          local_activation='relu',
+                          global_activation='relu',
+                          local_units=(64, 128, 1024),
+                          global_units=(512, 256),
+                          reduction=tf.reduce_max):
     """
     Feature transform network.
 
@@ -57,19 +67,23 @@ def feature_transform_net(
     Retturns:
         (B, num_dims, num_dims) transformation matrix,
     """
-    x = mlp(
-        features, local_units, training=training, activation=local_activation,
-        batch_norm_momentum=batch_norm_momentum)
+    x = mlp(features,
+            local_units,
+            training=training,
+            activation=local_activation,
+            batch_norm_momentum=batch_norm_momentum)
     x = layers.Lambda(reduction, arguments=dict(axis=-2))(x)  # TF-COMPAT
-    x = mlp(
-        x, global_units, training=training, activation=global_activation,
-        batch_norm_momentum=batch_norm_momentum)
+    x = mlp(x,
+            global_units,
+            training=training,
+            activation=global_activation,
+            batch_norm_momentum=batch_norm_momentum)
 
     delta = layers.Dense(num_dims**2)(x)
-    delta = layers.Reshape((num_dims,)*2)(delta)
+    delta = layers.Reshape((num_dims,) * 2)(delta)
 
-    delta = layers.Lambda(
-        add_identity, arguments=dict(num_dims=num_dims))(delta)  # TF-COMPAT
+    delta = layers.Lambda(add_identity,
+                          arguments=dict(num_dims=num_dims))(delta)  # TF-COMPAT
     return delta
 
 
@@ -79,10 +93,15 @@ def apply_transform(args):
 
 
 @gin.configurable(blacklist=['inputs', 'training', 'output_spec'])
-def pointnet_classifier(
-        inputs, training, output_spec, dropout_rate=0.3,
-        reduction=tf.reduce_max, units0=(64, 64), units1=(64, 128, 1024),
-        global_units=(512, 256), transform_reg_weight=0.0005):
+def pointnet_classifier(inputs,
+                        training,
+                        output_spec,
+                        dropout_rate=0.3,
+                        reduction=tf.reduce_max,
+                        units0=(64, 64),
+                        units1=(64, 128, 1024),
+                        global_units=(512, 256),
+                        transform_reg_weight=0.0005):
     """
     Get a pointnet classifier.
 
@@ -114,13 +133,16 @@ def pointnet_classifier(
 
     cloud = mlp(cloud, units1, training=training)
 
-    features = layers.Lambda(reduction, arguments=dict(axis=-2))(cloud)  # TF-COMPAT
-    features = mlp(
-        features, global_units, training=training, dropout_rate=dropout_rate)
+    features = layers.Lambda(reduction,
+                             arguments=dict(axis=-2))(cloud)  # TF-COMPAT
+    features = mlp(features,
+                   global_units,
+                   training=training,
+                   dropout_rate=dropout_rate)
     logits = tf.keras.layers.Dense(num_classes)(features)
 
-    model = tf.keras.models.Model(
-        inputs=tf.nest.flatten(inputs), outputs=logits)
+    model = tf.keras.models.Model(inputs=tf.nest.flatten(inputs),
+                                  outputs=logits)
 
     if transform_reg_weight:
         regularizer = tf.keras.regularizers.l2(transform_reg_weight)
@@ -132,6 +154,5 @@ def pointnet_classifier(
 
 
 def deserialize(name='pointnet_classifier', **kwargs):
-    return functools.partial({
-        'pointnet_classifier': pointnet_classifier
-    }[name], **kwargs)
+    return functools.partial({'pointnet_classifier': pointnet_classifier}[name],
+                             **kwargs)

@@ -1,0 +1,33 @@
+import pointnet.cli.main
+import pointnet.train
+import pointnet.util.gpu_options
+import pointnet.util.path
+
+main = @evaluate
+proc_title = 'pointnet-evaluate'
+
+evaluate.problem = %problem
+evaluate.model_fn = %model_fn
+evaluate.batch_size = %batch_size
+evaluate.verbose = %verbose
+evaluate.optimizer = %optimizer
+evaluate.chkpt_callback = %chkpt_callback
+evaluate.split = %split
+
+local_dir = @util.local_dir()
+util.local_dir.subdir = 'train'
+util.local_dir.run = %run
+util.local_dir.name = %name
+
+# chkpt_callback = @pointnet.callbacks.CheckpointCallback()
+# pointnet.callbacks.CheckpointCallback.directory = %local_dir
+
+chkpt_callback = @pointnet.callbacks.ModelCheckpoint()
+pointnet.callbacks.ModelCheckpoint.directory = %local_dir
+
+
+include 'models/default.gin'
+
+split = 'validation'
+run = 0
+name = 'default'
