@@ -20,6 +20,7 @@ from pointnet.cli.config import parse_config
 from pointnet.util.gpu_options import gpu_options
 from pointnet import train
 from pointnet import callbacks as cb
+from pointnet import blocks
 tf.compat.v1.enable_eager_execution()  # required for hparams callback
 
 
@@ -59,41 +60,6 @@ def get_tensorboard_hparams_callback(value_dict, log_dir):
     key_dict = get_tensorboard_hparams()
     hparams = {key_dict[k]: v for k, v in value_dict.items()}
     return hp.KerasCallback(log_dir, hparams)
-
-
-@gin.configurable
-def not_implemented_fn(*args, **kwargs):
-    raise NotImplementedError()
-
-
-@gin.configurable
-def problem(value=None):
-    if value is None:
-        from pointnet.problems import ModelnetProblem
-        value = ModelnetProblem()
-    return value
-
-
-@gin.configurable
-def optimizer(value=None):
-    if value is None:
-        value = tf.keras.optimizers.Adam()
-    return value
-
-
-@gin.configurable
-def batch_size(value=32):
-    return value
-
-
-@gin.configurable
-def model_fn(fn=not_implemented_fn):
-    return fn
-
-
-@gin.configurable
-def learning_rate_schedule(fn=not_implemented_fn):
-    return fn
 
 
 TUNE_MODEL_CONFIG = '''
@@ -179,7 +145,6 @@ class GinTuneModel(Trainable):
         self._problem = None
         self._optimizer = None
         self._model = None
-        self._lr_schedule = learning_rate_schedule()
         self._reset_callbacks()
 
         wp = config.get('initial_weights_path', None)
@@ -202,7 +167,7 @@ class GinTuneModel(Trainable):
     @property
     def problem(self):
         if self._problem is None:
-            self._problem = problem()
+            self._problem = blocks.problem()
         return self._problem
 
     @property
@@ -227,7 +192,7 @@ class GinTuneModel(Trainable):
             # note: we use training=True even during evaluation
             # this ensure spurious errors caused by batch norm state being out
             # of sync do not unfairly punish potentially good performing models
-            self._model = model_fn()(  # pylint: disable=not-callable
+            self._model = blocks.model_fn()(  # pylint: disable=not-callable
                 inputs,
                 training=True,
                 output_spec=self.problem.output_spec)
@@ -239,12 +204,12 @@ class GinTuneModel(Trainable):
     @property
     def optimizer(self):
         if self._optimizer is None:
-            self._optimizer = optimizer()
+            self._optimizer = blocks.optimizer()
         return self._optimizer
 
     @property
     def batch_size(self):
-        return batch_size()
+        return blocks.batch_size()
 
     def steps_per_epoch(self, split):
         return self.problem.examples_per_epoch(split) // self.batch_size
@@ -253,9 +218,6 @@ class GinTuneModel(Trainable):
         """Runs one epoch of training, and returns current epoch accuracies."""
         logging.info("training for iteration: {}".format(self._iteration))
         epoch = self._iteration
-        if self._lr_schedule is not None:
-            tf.keras.backend.set_value(self.model.optimizer.lr,
-                                       self._lr_schedule(epoch))
 
         generators = self.generators
         t = time.time()
@@ -365,11 +327,11 @@ def evaluate_tune(log_dir,
         gin.parse_config_file(op_config)
     chkpt_callback = cb.ModelCheckpoint(final_dir)
     if eval_batch_size is None:
-        eval_batch_size = batch_size()
+        eval_batch_size = blocks.batch_size()
 
-    train.evaluate(problem(),
-                   model_fn(),
-                   optimizer(),
+    train.evaluate(blocks.problem(),
+                   blocks.model_fn(),
+                   blocks.optimizer(),
                    eval_batch_size,
                    chkpt_callback,
                    split=split,

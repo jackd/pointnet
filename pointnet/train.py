@@ -7,7 +7,6 @@ import tensorflow as tf
 from pointnet import callbacks as cb
 from pointnet import fns
 from pointnet import problems
-from pointnet.util.gpu_options import gpu_options
 
 # @gin.configurable
 # class ModelBuilder(object):
@@ -64,7 +63,6 @@ def get_model(problem, model_fn, optimizer, compiled=True, training=None):
     return model
 
 
-@gin.configurable
 def train(problem,
           model_fn,
           optimizer,
@@ -74,7 +72,6 @@ def train(problem,
           epochs=100,
           verbose=True,
           fresh=False):
-    gpu_options()
     model = get_model(problem,
                       model_fn,
                       optimizer,
@@ -124,7 +121,6 @@ def evaluate(problem,
              chkpt_callback,
              split='validation',
              verbose=True):
-    gpu_options()
     model = get_model(problem,
                       model_fn,
                       optimizer,

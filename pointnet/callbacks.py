@@ -2,32 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
+import six
 import os
 import gin
-import six
+import numpy as np
 import tensorflow as tf
-import contextlib
-
-# @contextlib.contextmanager
-# def temp_attrs(obj, **attrs):
-#     keys = sorted(attrs)
-#     backups = tuple((k, getattr(obj, k)) for k in keys)
-
-#     def restore():
-#         try:
-#             for k, v in backups:
-#                 setattr(obj, k, v)
-#         except Exception:
-#             pass
-
-#     try:
-#         for k in keys:
-#             setattr(obj, k, attrs[k])
-#     except Exception:
-#         restore()
-#         raise
-#     yield obj
-#     restore()
 
 
 @gin.configurable(module='pointnet.callbacks')
@@ -206,7 +186,7 @@ class ModelCheckpoint(tf.keras.callbacks.ModelCheckpoint):
 
 
 @gin.configurable(module='pointnet.callbacks')
-class GinConfigWriterCallback(tf.keras.callbacks.Callback):
+class GinConfigWriter(tf.keras.callbacks.Callback):
 
     def __init__(self, log_dir):
         if not isinstance(log_dir, six.string_types):
@@ -215,39 +195,60 @@ class GinConfigWriterCallback(tf.keras.callbacks.Callback):
         self._log_dir = log_dir
 
     def on_train_begin(self, logs=None):
-        super(GinConfigWriterCallback, self).on_train_begin(logs)
+        super(GinConfigWriter, self).on_train_begin(logs)
         epochs = self.params['epochs']
         path = os.path.join(self._log_dir, 'operative-config%d.gin' % epochs)
         with tf.io.gfile.GFile(path, 'w') as fp:
             fp.write(gin.operative_config_str())
 
 
-@gin.configurable(blacklist=['epoch'])
-def original_lr_schedule(
-        epoch,
-        lr0=1e-3,
-        # 16881 * 20 is a magic number from original
-        # 9843 is number of examples in official modelnet train split
-        decay_epochs=(16881 * 20) // 9843,
-        decay_ray=0.5,
-        min_lr=1e-5,
-):
-    return max(lr0 * decay_ray**(epoch // decay_epochs), min_lr)
-
-
 @gin.configurable(module='pointnet.callbacks')
-def get_additional_callbacks(terminate_on_nan=True,
-                             log_dir=None,
-                             lr_schedule=None,
-                             save_config=False):
-    callbacks = []
-    if terminate_on_nan:
-        callbacks.append(tf.keras.callbacks.TerminateOnNaN())
-    if log_dir is not None:
-        callbacks.append(tf.keras.callbacks.TensorBoard(log_dir=log_dir))
-    if lr_schedule is not None:
-        callbacks.append(
-            tf.keras.callbacks.LearningRateScheduler(schedule=lr_schedule))
-    if save_config:
-        callbacks.append(GinConfigWriterCallback(log_dir))
-    return callbacks
+class BatchNormMomentumScheduler(tf.keras.callbacks.Callback):
+
+    def __init__(self, schedule):
+        """
+        Args:
+            schedule: function mapping epoch to batch norm momentum.
+        """
+        if not callable(schedule):
+            schedule = tf.keras.utils.deserialize_keras_object(schedule)
+        self.schedule = schedule
+
+    def set_model(self, model):
+        from pointnet import layers
+        super(BatchNormMomentumScheduler, self).set_model(model)
+        self._batch_norm_layers = tuple(
+            layer for layer in model.layers
+            if isinstance(layer, layers.VariableMomentumBatchNormalization))
+
+    def on_epoch_begin(self, epoch, logs=None):
+        K = tf.keras.backend
+        momentum = self.schedule(epoch)
+        if not isinstance(momentum, (float, np.float32, np.float64)):
+            raise ValueError('The output of the "schedule" function '
+                             'should be float.')
+        if not hasattr(self, '_batch_norm_layers'):
+            assert (self.model is None)
+            raise RuntimeError('No model set')
+        for layer in self._batch_norm_layers:
+            K.set_value(layer.momentum, momentum)
+
+    def get_config(self):
+        return dict(
+            schedule=tf.keras.utils.serialize_keras_object(self.schedule))
+
+
+@gin.configurable(module='pointnet.callbacks', blacklist=['step'])
+def complementary_clipped_exponential_decay(step,
+                                            initial_value,
+                                            decay_steps,
+                                            decay_rate,
+                                            max_value=0.99,
+                                            staircase=False):
+    exponent = step / decay_steps
+    if staircase:
+        exponent = np.floor(exponent)
+    value = 1 - (1 - initial_value) * (decay_rate**exponent)
+    if max_value is not None:
+        value = min(value, max_value)
+    return value

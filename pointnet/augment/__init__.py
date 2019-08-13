@@ -36,7 +36,7 @@ from pointnet.augment.rigid import maybe_reflect
 #         )
 
 
-@gin.configurable(blacklist=['inputs', 'labels'])
+@gin.configurable(blacklist=['inputs', 'labels'], module='pointnet.augment')
 def augment_cloud(
         inputs,
         labels,
@@ -47,7 +47,7 @@ def augment_cloud(
         rigid_transform_stddev=None,
         maybe_reflect_x=False,
         perlin_grid_shape=None,
-        perlin_stddev=0.25,
+        perlin_stddev=None,
         rotate_scheme='none',
 ):
     if isinstance(inputs, dict):

@@ -1,0 +1,60 @@
+import pointnet.augment
+import pointnet.blocks
+import pointnet.callbacks
+import pointnet.keras_configurables
+import pointnet.layers
+import pointnet.models
+import pointnet.path
+import pointnet.problems
+import pointnet.schedules
+
+directory = @pointnet.path.local_dir()
+pointnet.path.local_dir.subdir = 'single'
+pointnet.path.local_dir.name = 'original'
+
+problem.value = @pointnet.problems.ModelnetProblem()
+pointnet.problems.ModelnetProblem.map_fn = {
+    'train': @train/pointnet.augment.augment_cloud,
+    'validation': @validation/pointnet.augment.augment_cloud,
+}
+pointnet.augment.augment_cloud.rotate_scheme = 'random'
+train/pointnet.augment.augment_cloud.jitter_stddev = 1e-2
+
+model_fn.value = @pointnet.models.pointnet_classifier
+
+optimizer.value = @tf.keras.optimizers.Adam()
+
+chkpt_callback.value = @pointnet.callbacks.ModelCheckpoint()
+pointnet.callbacks.ModelCheckpoint.directory = %directory
+
+callbacks.value = [
+    @tf.keras.callbacks.TerminateOnNaN(),
+    @tf.keras.callbacks.TensorBoard(),
+    @tf.keras.callbacks.LearningRateScheduler(),
+    @pointnet.callbacks.BatchNormMomentumScheduler(),
+    @pointnet.callbacks.GinConfigWriter(),
+]
+
+tf.keras.callbacks.TensorBoard.log_dir = %directory
+
+pointnet.problems.epochs_in_steps.steps = 20000
+pointnet.problems.epochs_in_steps.problem = @problem()
+pointnet.problems.epochs_in_steps.batch_size = @batch_size()
+
+tf.keras.callbacks.LearningRateScheduler.schedule = @lr/pointnet.schedules.exponential_decay_fn()
+lr/pointnet.schedules.exponential_decay_fn.initial_value = 1e-3
+lr/pointnet.schedules.exponential_decay_fn.decay_steps = @pointnet.problems.epochs_in_steps()
+lr/pointnet.schedules.exponential_decay_fn.decay_rate = 0.7
+lr/pointnet.schedules.exponential_decay_fn.min_value = 1e-5
+lr/pointnet.schedules.exponential_decay_fn.staircase = True
+
+pointnet.callbacks.BatchNormMomentumScheduler.schedule = @bn/pointnet.schedules.complementary_exponential_decay_fn()
+bn/pointnet.schedules.complementary_exponential_decay_fn.initial_value = 0.5
+bn/pointnet.schedules.complementary_exponential_decay_fn.decay_steps = @pointnet.problems.epochs_in_steps()
+bn/pointnet.schedules.complementary_exponential_decay_fn.decay_rate = 0.5
+bn/pointnet.schedules.complementary_exponential_decay_fn.max_value = 0.99
+bn/pointnet.schedules.complementary_exponential_decay_fn.staircase = False
+
+pointnet.callbacks.GinConfigWriter.log_dir = %directory
+
+epochs.value = 250

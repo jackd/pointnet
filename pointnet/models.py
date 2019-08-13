@@ -5,6 +5,8 @@ from __future__ import print_function
 import tensorflow as tf
 import functools
 import gin
+from pointnet.layers import VariableMomentumBatchNormalization
+import six
 layers = tf.keras.layers
 
 
@@ -17,7 +19,6 @@ def transform_diff(transform):
             tf.eye(value(transform.shape[-1])))  # TF-COMPAT
 
 
-@gin.configurable(blacklist=['x', 'units', 'training'])
 def mlp(x,
         units,
         training=None,
@@ -30,8 +31,8 @@ def mlp(x,
         tf.keras.layers.Dense
         x = layers.Dense(u, use_bias=use_bias)(x)
         if use_batch_norm:
-            x = layers.BatchNormalization(momentum=batch_norm_momentum)(
-                x, training=training)
+            x = VariableMomentumBatchNormalization(
+                momentum=batch_norm_momentum)(x, training=training)
         x = layers.Activation(activation)(x)
         if dropout_rate:
             x = layers.Dropout(dropout_rate)(x, training=training)
@@ -44,11 +45,10 @@ def add_identity(x, num_dims=None):
     return x + tf.eye(num_dims, dtype=x.dtype)
 
 
-@gin.configurable(blacklist=['features', 'training'])
 def feature_transform_net(features,
                           num_dims,
                           training=None,
-                          bn=True,
+                          use_batch_norm=True,
                           batch_norm_momentum=0.99,
                           local_activation='relu',
                           global_activation='relu',
@@ -61,7 +61,7 @@ def feature_transform_net(features,
     Args:
         inputs: (B, N, f_in) inputs features
         training: flag used in batch norm
-        bn_momentum: batch norm momentum
+        batch_norm_momentum: batch norm momentum
         num_dims: output dimension
 
     Retturns:
@@ -71,12 +71,14 @@ def feature_transform_net(features,
             local_units,
             training=training,
             activation=local_activation,
+            use_batch_norm=use_batch_norm,
             batch_norm_momentum=batch_norm_momentum)
     x = layers.Lambda(reduction, arguments=dict(axis=-2))(x)  # TF-COMPAT
     x = mlp(x,
             global_units,
             training=training,
             activation=global_activation,
+            use_batch_norm=use_batch_norm,
             batch_norm_momentum=batch_norm_momentum)
 
     delta = layers.Dense(num_dims**2)(x)
@@ -92,10 +94,21 @@ def apply_transform(args):
     return tf.matmul(cloud, matrix)
 
 
-@gin.configurable(blacklist=['inputs', 'training', 'output_spec'])
+_reductions = {
+    'max': tf.reduce_max,
+    'mean': tf.reduce_mean,
+    'reduce_max': tf.reduce_max,
+    'reduce_mean': tf.reduce_mean,
+}
+
+
+@gin.configurable(blacklist=['inputs', 'training', 'output_spec'],
+                  module='pointnet.models')
 def pointnet_classifier(inputs,
                         training,
                         output_spec,
+                        use_batch_norm=True,
+                        batch_norm_momentum=0.99,
                         dropout_rate=0.3,
                         reduction=tf.reduce_max,
                         units0=(64, 64),
@@ -108,7 +121,11 @@ def pointnet_classifier(inputs,
     Args:
         inputs: `tf.keras.layers.Input` representing cloud coordinates.
         training: bool indicating training mode.
-        num_classes: number of classes in the classification problem.
+        output_spec: InputSpec (shape, dtype attrs) of the output
+        iteration: step of the optimizer.
+        use_batch_norm: flag indicating usage of batch norm.
+        batch_norm_momentum: momentum value of batch norm. Ignored if
+            use_batch_norm is False.
         dropout_rate: rate used in Dropout for global mlp.
         reduction: reduction function accepting (., axis) arguments.
         units0: units in initial local mlp network.
@@ -122,23 +139,28 @@ def pointnet_classifier(inputs,
     Returns:
         keras model with logits as outputs.
     """
+    if isinstance(reduction, six.string_types):
+        reduction = _reductions[reduction]
+    bn_kwargs = dict(use_batch_norm=use_batch_norm,
+                     batch_norm_momentum=batch_norm_momentum)
     num_classes = output_spec.shape[-1]
     cloud = inputs
-    transform0 = feature_transform_net(cloud, 3, training=training)
+    transform0 = feature_transform_net(cloud, 3, training=training, **bn_kwargs)
     cloud = layers.Lambda(apply_transform)([cloud, transform0])  # TF-COMPAT
-    cloud = mlp(cloud, units0, training=training)
+    cloud = mlp(cloud, units0, training=training, **bn_kwargs)
 
-    transform1 = feature_transform_net(cloud, units0[-1])
+    transform1 = feature_transform_net(cloud, units0[-1], **bn_kwargs)
     cloud = layers.Lambda(apply_transform)([cloud, transform1])  # TF-COMPAT
 
-    cloud = mlp(cloud, units1, training=training)
+    cloud = mlp(cloud, units1, training=training, **bn_kwargs)
 
     features = layers.Lambda(reduction,
                              arguments=dict(axis=-2))(cloud)  # TF-COMPAT
     features = mlp(features,
                    global_units,
                    training=training,
-                   dropout_rate=dropout_rate)
+                   dropout_rate=dropout_rate,
+                   **bn_kwargs)
     logits = tf.keras.layers.Dense(num_classes)(features)
 
     model = tf.keras.models.Model(inputs=tf.nest.flatten(inputs),

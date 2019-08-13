@@ -110,7 +110,6 @@ def as_type(cls, instance):
         raise ValueError('Invalid instance {} of type {}'.format(instance, cls))
 
 
-@gin.configurable
 class TfdsProblem(Problem):
 
     def __init__(self,
@@ -348,23 +347,27 @@ class FfdModelnetConfig(modelnet.CloudConfig):
         return self._f(points)
 
 
-@gin.configurable
+@gin.configurable(module='pointnet.problems')
 class ModelnetProblem(TfdsProblem):
 
-    def __init__(self,
-                 num_classes=40,
-                 num_points_base=2048,
-                 num_points_sampled=1024,
-                 positions_only=True,
-                 loss=tf.keras.losses.SparseCategoricalCrossentropy(
-                     from_logits=True),
-                 metrics=(tf.keras.metrics.SparseCategoricalAccuracy(),),
-                 objective=None,
-                 use_train_test_split=False,
-                 train_percent=90,
-                 num_examples_override=None,
-                 map_fn=None,
-                 **kwargs):
+    def __init__(
+            self,
+            num_classes=40,
+            num_points_base=2048,
+            num_points_sampled=1024,
+            positions_only=True,
+            loss=tf.keras.losses.SparseCategoricalCrossentropy(
+                from_logits=True),
+            metrics=(
+                tf.keras.metrics.SparseCategoricalAccuracy(),
+                tf.keras.metrics.SparseCategoricalCrossentropy(
+                    from_logits=True),
+            ),
+            objective=None,
+            train_split='full',  # 'full' or integer percent
+            num_examples_override=None,
+            map_fn=None,
+            **kwargs):
         import functools
         self._num_examples_override = num_examples_override
         if objective is None:
@@ -380,8 +383,7 @@ class ModelnetProblem(TfdsProblem):
         output_spec = tf.keras.layers.InputSpec(shape=(num_classes,),
                                                 dtype=tf.float32)
         self._num_points_sampled = num_points_sampled
-        self._train_percent = train_percent
-        self._use_train_test_split = use_train_test_split
+        self._train_split = train_split
 
         self._base_map_fn = functools.partial(
             base_modelnet_map,
@@ -402,8 +404,7 @@ class ModelnetProblem(TfdsProblem):
             base.pop(k)
         updates = dict(
             num_points_samples=self._num_points_sampled,
-            train_percent=self._train_percent,
-            use_train_test_split=self._use_train_test_split,
+            train_split=self._train_split,
             num_classes=self._builder.builder_configconfig.num_classes)
         base.update(updates)
         return base
@@ -413,7 +414,7 @@ class ModelnetProblem(TfdsProblem):
         return base.map(self._base_map_fn)
 
     def _split(self, split):
-        if self._use_train_test_split:
+        if self._train_split in 'full':
             if split == tfds.Split.TRAIN:
                 return split
             elif split in (tfds.Split.VALIDATION, tfds.Split.TEST):
@@ -421,12 +422,10 @@ class ModelnetProblem(TfdsProblem):
         else:
             ReadInstruction = tfds.core.tfrecords_reader.ReadInstruction
             if split == tfds.Split.TRAIN:
-                return ReadInstruction('train',
-                                       to=self._train_percent,
-                                       unit='%')
+                return ReadInstruction('train', to=self._train_split, unit='%')
             elif split == tfds.Split.VALIDATION:
                 return ReadInstruction('train',
-                                       from_=self._train_percent,
+                                       from_=self._train_split,
                                        unit='%')
             else:
                 return split
@@ -434,13 +433,13 @@ class ModelnetProblem(TfdsProblem):
     def _examples_per_epoch(self, split, batch_size=None):
         if self._num_examples_override is not None:
             value = self._num_examples_override
-        elif self._use_train_test_split:
+        elif self._train_split == 'full':
             value = examples_per_epoch(self._builder, self._split(split))
         elif split == tfds.Split.TRAIN:
-            value = int((self._train_percent / 100) *
+            value = int((self._train_split / 100) *
                         examples_per_epoch(self._builder, tfds.Split.TRAIN))
         elif split == tfds.Split.VALIDATION:
-            value = int((1 - self._train_percent / 100) *
+            value = int((1 - self._train_split / 100) *
                         examples_per_epoch(self._builder, tfds.Split.TRAIN))
         else:
             assert (split == tfds.Split.TEST)
@@ -448,6 +447,16 @@ class ModelnetProblem(TfdsProblem):
         if batch_size is not None:
             value //= batch_size
         return value
+
+
+@gin.configurable(module='pointnet.problems')
+def epochs_in_steps(
+        steps,
+        batch_size,
+        problem,
+):
+    """Get the number of epochs in the given number of steps."""
+    return (steps * batch_size) // problem.examples_per_epoch(split='train')
 
 
 def deserialize(name='modelnet40', **kwargs):

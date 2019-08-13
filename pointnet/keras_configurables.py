@@ -22,6 +22,8 @@ blacklist = set(('serialize', 'deserialize', 'get'))
 for package, module in ((tf.keras.losses, 'tf.keras.losses'),
                         (tf.keras.metrics, 'tf.keras.metrics'),
                         (tf.keras.optimizers, 'tf.keras.optimizers'),
+                        (tf.keras.optimizers.schedules,
+                         'tf.keras.optimizers.schedules'),
                         (tf.keras.regularizers, 'tf.keras.regularizers')):
     _register_callables(package, module, blacklist)
 
