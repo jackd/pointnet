@@ -10,11 +10,11 @@ import os
 def local_dir(base_dir='~/pointnet_models',
               subdir=None,
               name=None,
-              subname=None,
+              variant='base',
               run=0):
     """Convenient function for setting local directories via gin."""
     path = os.path.join(*(
-        x for x in (base_dir, subdir, name, subname) if x is not None))
+        x for x in (base_dir, subdir, name, variant) if x is not None))
     if isinstance(run, int):
         run = 'run%03d' % run
     path = os.path.join(path, run)

@@ -28,7 +28,6 @@ def mlp(x,
         activation='relu'):
     use_bias = not use_batch_norm
     for u in units:
-        tf.keras.layers.Dense
         x = layers.Dense(u, use_bias=use_bias)(x)
         if use_batch_norm:
             x = VariableMomentumBatchNormalization(
@@ -102,19 +101,27 @@ _reductions = {
 }
 
 
+def _divide_by_batch_size(args):  # TF-COMPAT
+    value, value_with_batch_dim = args
+    batch_size = tf.shape(value_with_batch_dim)[0]
+    return value / tf.cast(batch_size, value.dtype)
+
+
 @gin.configurable(blacklist=['inputs', 'training', 'output_spec'],
                   module='pointnet.models')
-def pointnet_classifier(inputs,
-                        training,
-                        output_spec,
-                        use_batch_norm=True,
-                        batch_norm_momentum=0.99,
-                        dropout_rate=0.3,
-                        reduction=tf.reduce_max,
-                        units0=(64, 64),
-                        units1=(64, 128, 1024),
-                        global_units=(512, 256),
-                        transform_reg_weight=0.0005):
+def pointnet_classifier(
+        inputs,
+        training,
+        output_spec,
+        use_batch_norm=True,
+        batch_norm_momentum=0.99,
+        dropout_rate=0.3,
+        reduction=tf.reduce_max,
+        units0=(64, 64),
+        units1=(64, 128, 1024),
+        global_units=(512, 256),
+        transform_reg_weight=0.0005 * 32,  # account for averaging
+):
     """
     Get a pointnet classifier.
 
@@ -122,7 +129,6 @@ def pointnet_classifier(inputs,
         inputs: `tf.keras.layers.Input` representing cloud coordinates.
         training: bool indicating training mode.
         output_spec: InputSpec (shape, dtype attrs) of the output
-        iteration: step of the optimizer.
         use_batch_norm: flag indicating usage of batch norm.
         batch_norm_momentum: momentum value of batch norm. Ignored if
             use_batch_norm is False.
@@ -134,7 +140,8 @@ def pointnet_classifier(inputs,
         transform_reg_weight: weight used in l2 regularizer. Note this should
             be half the weight of the corresponding code in the original
             implementation since we used keras, which does not half the squared
-            norm.
+            norm. We also take the mean over the batch dimension, hence the
+            factor of 32 in the default value compared to the original paper.
 
     Returns:
         keras model with logits as outputs.
@@ -169,9 +176,11 @@ def pointnet_classifier(inputs,
     if transform_reg_weight:
         regularizer = tf.keras.regularizers.l2(transform_reg_weight)
         for transform in (transform1,):
-            model.add_loss(
-                tf.keras.layers.Lambda(regularizer)(
-                    layers.Lambda(transform_diff)(transform)))  # TF-COMPAT
+            reg_loss = tf.keras.layers.Lambda(regularizer)(
+                layers.Lambda(transform_diff)(transform))
+            mean_reg_loss = tf.keras.layers.Lambda(_divide_by_batch_size)(
+                [reg_loss, transform])
+            model.add_loss(mean_reg_loss)  # TF-COMPAT
     return model
 
 

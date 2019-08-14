@@ -5,7 +5,6 @@ import tensorflow as tf
 import gin
 
 
-@gin.configurable(blacklist=['positions'])
 def jitter_positions(positions, stddev=0.02, clip=None):
     """
     Randomly jitter points independantly by normally distributed noise.
@@ -26,7 +25,6 @@ def jitter_positions(positions, stddev=0.02, clip=None):
     return positions + jitter
 
 
-@gin.configurable(blacklist=['normals'])
 def jitter_normals(normals, stddev=0.02, clip=None, some_normals_invalid=False):
     if stddev == 0 or stddev is None:
         return normals

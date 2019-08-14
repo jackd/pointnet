@@ -11,8 +11,7 @@ from pointnet.tune_model import GinTuneModel
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray import tune
 from ray.tune import schedulers
-
-from pointnet.util import redis
+from pointnet.bin.util import DEFAULT
 
 
 def trunc_norm(loc, scale):
@@ -61,18 +60,20 @@ def custom_explore(config):
     config = copy.deepcopy(config)
     mutable_bindings = config['mutable_bindings']
     for k, scale in (
-        ('train/augment_cloud.jitter_stddev', 0.1),
-        ('train/augment_cloud.scale_stddev', 0.1),
-        ('train/augment_cloud.scale_stddev', 0.05),
-        ('train/augment_cloud.perlin_stddev', 0.1),
+        ('train/pointnet.augment.augment_cloud.jitter_stddev', 0.1),
+        ('train/pointnet.augment.augment_cloud.scale_stddev', 0.1),
+        ('train/pointnet.augment.augment_cloud.scale_stddev', 0.05),
+        ('train/pointnet.augment.augment_cloud.perlin_stddev', 0.1),
     ):
         if k in mutable_bindings:
             mutable_bindings[k] *= default_factor(scale=scale)
             config['reset_generators'] = True
 
-    if 'train/perlin_grid_shape' in mutable_bindings:
-        config['train/augment_cloud.perlin_grid_shape'] = mutate_int_value(
-            config['train/augment_cloud.perlin_grid_shape'])
+    if 'train/pointnet.augment.perlin_grid_shape' in mutable_bindings:
+        config[
+            'train/pointnet.augment.augment_cloud.perlin_grid_shape'] = mutate_int_value(
+                config['train/pointnet.augment.augment_cloud.perlin_grid_shape']
+            )
         config['reset_generators'] = True
 
     return config
@@ -86,19 +87,19 @@ def clipped_normal(mean=0, stddev=1, clip=2):
 def random_bindings():
     import random
     return {
-        'rotate_scheme':
+        'augment_cloud.rotate_scheme':
             tune.choice(['random', 'pca-xy']),
-        'train/augment_cloud.jitter_stddev':
+        'train/pointnet.augment.augment_cloud.jitter_stddev':
             tune.sample_from(lambda spec: 10**(-(random.random() * 4 + 1))),
-        'train/augment_cloud.scale_stddev':
+        'train/pointnet.augment.augment_cloud.scale_stddev':
             tune.sample_from(lambda spec: 10**(-(random.random() * 5))),
-        'train/augment_cloud.rigid_transform_stddev':
+        'train/pointnet.augment.augment_cloud.rigid_transform_stddev':
             tune.sample_from(lambda spec: 10**(-(random.random() * 4 + 1))),
-        'train/augment_cloud.perlin_grid_shape':
+        'train/pointnet.augment.augment_cloud.perlin_grid_shape':
             tune.randint(2, 11),
-        'train/augment_cloud.perlin_stddev':
+        'train/pointnet.augment.augment_cloud.perlin_stddev':
             tune.sample_from(lambda spec: 5 * 10**(-(random.random() * 2 + 1))),
-        'train/augment_cloud.maybe_reflect_x':
+        'train/pointnet.augment.augment_cloud.maybe_reflect_x':
             tune.choice([False, True])
     }
 
@@ -117,7 +118,7 @@ def search_space(rotate_scheme=('random', 'pca-xy'),
         rotate_scheme = hp.choice('rotate_scheme', rotate_scheme)
     # macro below doesn't seem to work?
     # bindings['rotate_scheme'] = rotate_scheme
-    bindings['augment_cloud.rotate_scheme'] = rotate_scheme
+    bindings['pointnet.augment.augment_cloud.rotate_scheme'] = rotate_scheme
 
     if isinstance(maybe_reflect_x, (list, tuple)):
         maybe_reflect_x = hp.choice('maybe_reflect_x', maybe_reflect_x)
@@ -161,14 +162,14 @@ def tune_config(inner_config_files,
                 inner_mutable_bindings,
                 inner_bindings=[],
                 initial_weights_path=None,
-                config_dir=None,
-                verbosity=logging.INFO):
+                verbosity=logging.INFO,
+                allow_growth=True):
     out = dict(
-        config_dir=config_dir,
         config_files=inner_config_files,
         bindings=inner_bindings,
         verbosity=verbosity,
         initial_weights_path=initial_weights_path,
+        allow_growth=allow_growth,
     )
     if inner_mutable_bindings is not None:
         out['mutable_bindings'] = inner_mutable_bindings
@@ -210,7 +211,6 @@ PopulationBasedTraining = gin.external_configurable(
 AsyncHyperBandScheduler = gin.external_configurable(
     schedulers.AsyncHyperBandScheduler)
 MedianStoppingRule = gin.external_configurable(schedulers.MedianStoppingRule)
-
 HyperOptSearch = gin.external_configurable(HyperOptSearch)
 
 
@@ -234,27 +234,22 @@ def aug_opt(
         name,
         train_spec,
         scheduler,
-        resume=True,
+        inner_config_dir,
+        resume=None,
         fresh=False,
-        num_cpus=None,
-        num_gpus=None,
-        local_mode=False,  # switch to true for debugging
         search_alg=None,
 ):
-    import ray
     from ray.tune import run
     from ray.tune import Experiment
+    train_spec['config']['config_dir'] = inner_config_dir
+    if resume is None:
+        resume = not fresh
 
     experiment = Experiment.from_json(name=name, spec=train_spec)
     if fresh and os.path.exists(experiment.local_dir):
         import shutil
         shutil.rmtree(experiment.local_dir)
 
-    redis_address = redis.redis()
-    ray.init(num_gpus=num_gpus,
-             num_cpus=num_cpus,
-             local_mode=local_mode,
-             redis_address=redis_address)
     run(experiment,
         name=name,
         scheduler=scheduler,

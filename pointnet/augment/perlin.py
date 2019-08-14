@@ -9,7 +9,7 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-from pointnet.util import interp
+from pointnet.augment.util import interp
 import gin
 
 
@@ -28,7 +28,6 @@ def scale_to_grid(coords, grid_shape, eps=1e-5):
     return coords, rescale
 
 
-@gin.configurable(blacklist=['coords'])
 def add_perlin_noise(coords,
                      grid_shape=(4, 4, 4),
                      stddev=0.25,

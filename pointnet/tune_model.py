@@ -15,13 +15,9 @@ import time
 from pointnet import problems
 from pointnet import models
 from pointnet import augment as aug
-import gin
-from pointnet.cli.config import parse_config
-from pointnet.util.gpu_options import gpu_options
-from pointnet import train
+from pointnet.bin import util
 from pointnet import callbacks as cb
 from pointnet import blocks
-tf.compat.v1.enable_eager_execution()  # required for hparams callback
 
 
 def get_tensorboard_hparams(rotate_scheme=('random', 'pca-xy'),
@@ -60,15 +56,6 @@ def get_tensorboard_hparams_callback(value_dict, log_dir):
     key_dict = get_tensorboard_hparams()
     hparams = {key_dict[k]: v for k, v in value_dict.items()}
     return hp.KerasCallback(log_dir, hparams)
-
-
-TUNE_MODEL_CONFIG = '''
-problem.value = %problem
-optimizer.value = %optimizer
-batch_size.value = %batch_size
-model_fn.fn = %model_fn
-learning_rate_schedule.fn = %lr_schedule
-'''
 
 
 def operative_config_path(log_dir, iteration=0):
@@ -124,6 +111,9 @@ class GinTuneModel(Trainable):
     """
 
     def _setup(self, config):
+        util.tf_init(gpus=None,
+                     allow_growth=config.get('allow_growth', True),
+                     eager=False)
         logging.set_verbosity(config.get('verbosity', logging.INFO))
 
         logging.info("calling setup")
@@ -132,14 +122,15 @@ class GinTuneModel(Trainable):
             config_files = [config_files]
 
         with gin.unlock_config():
-            gin.parse_config(TUNE_MODEL_CONFIG)
-            parse_config(config['config_dir'],
-                         config_files,
-                         config['bindings'],
-                         finalize_config=False)
+            config_dir = config.get('config_dir')
+            if config_dir is None:
+                config_dir = util.get_config_dir()
+            util.parse_config(config_dir,
+                              config_files,
+                              config['bindings'],
+                              finalize_config=False)
             _parse_config_item(None, config['mutable_bindings'])
             gin.finalize()
-        gpu_options()
 
         self._generators = None
         self._problem = None
@@ -278,8 +269,8 @@ class GinTuneModel(Trainable):
 
     def _reset_callbacks(self):
         self._callbacks = [
-            get_tensorboard_hparams_callback(self.config['mutable_bindings'],
-                                             self.logdir)
+            # get_tensorboard_hparams_callback(self.config['mutable_bindings'],
+            #                                  self.logdir)
         ]
 
     def reset_config(self, new_config):
@@ -314,6 +305,7 @@ def evaluate_tune(log_dir,
                   split='validation',
                   verbose=True,
                   eval_batch_size=None):
+    from pointnet import train
     log_dir = os.path.realpath(os.path.expanduser(os.path.expandvars(log_dir)))
     paths = [os.path.join(log_dir, d) for d in tf.io.gfile.listdir(log_dir)]
     op_configs = [d for d in paths if d.endswith('.gin')]

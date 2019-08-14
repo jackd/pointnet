@@ -1,0 +1,16 @@
+import pointnet.blocks
+import pointnet.builders
+import pointnet.problems
+
+problem.value = @pointnet.problems.ModelnetProblem()
+pointnet.problems.ModelnetProblem.builder = %builder
+pointnet.problems.ModelnetProblem.map_fn = {
+    'train': @train/pointnet.augment.augment_cloud,
+    'validation': @validation/pointnet.augment.augment_cloud,
+}
+pointnet.augment.augment_cloud.rotate_scheme = %rotate_scheme
+train/pointnet.augment.augment_cloud.jitter_stddev = %jitter_stddev
+train/pointnet.augment.augment_cloud.jitter_clip = %jitter_clip
+rotate_scheme = 'random'
+jitter_stddev = 1e-2
+jitter_clip = 5e-2

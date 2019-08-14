@@ -1,0 +1,6 @@
+batch_size.value = 2
+pointnet.problems.ModelnetProblem.num_examples_override = 10
+pointnet.problems.ModelnetProblem.num_points = 128
+pointnet.problems.ModelnetProblem.shuffle_buffer = 10
+epochs.value = 2
+variant = 'smoke-test'

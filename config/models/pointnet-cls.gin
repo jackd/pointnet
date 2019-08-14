@@ -1,5 +1,6 @@
 import pointnet.augment
 import pointnet.blocks
+import pointnet.builders
 import pointnet.callbacks
 import pointnet.keras_configurables
 import pointnet.layers
@@ -8,21 +9,31 @@ import pointnet.path
 import pointnet.problems
 import pointnet.schedules
 
+include 'problems/modelnet.gin'
+
 directory = @pointnet.path.local_dir()
 pointnet.path.local_dir.subdir = 'single'
-pointnet.path.local_dir.name = 'original'
+pointnet.path.local_dir.name = %name
+pointnet.path.local_dir.variant = %variant
+pointnet.path.local_dir.run = %run
+name = 'pointnet-cls'
+variant = 'base'
+run = 0
 
-problem.value = @pointnet.problems.ModelnetProblem()
-pointnet.problems.ModelnetProblem.map_fn = {
-    'train': @train/pointnet.augment.augment_cloud,
-    'validation': @validation/pointnet.augment.augment_cloud,
-}
-pointnet.augment.augment_cloud.rotate_scheme = 'random'
-train/pointnet.augment.augment_cloud.jitter_stddev = 1e-2
+builder = @pointnet.builders.pointnet_builder()
 
 model_fn.value = @pointnet.models.pointnet_classifier
 
 optimizer.value = @tf.keras.optimizers.Adam()
+tf.keras.optimizers.Adam.learning_rate = @pointnet.schedules.ClippedExponentialDecay()
+pointnet.schedules.ClippedExponentialDecay.initial_learning_rate = 1e-3
+pointnet.schedules.ClippedExponentialDecay.min_value = 1e-5
+pointnet.schedules.ClippedExponentialDecay.decay_steps = @lr/num_batches_in_examples()
+pointnet.schedules.ClippedExponentialDecay.decay_rate = 0.7
+pointnet.schedules.ClippedExponentialDecay.staircase = True
+
+num_batches_in_examples.batch_size = @batch_size()
+lr/num_batches_in_examples.num_examples = 200000
 
 chkpt_callback.value = @pointnet.callbacks.ModelCheckpoint()
 pointnet.callbacks.ModelCheckpoint.directory = %directory
@@ -30,30 +41,20 @@ pointnet.callbacks.ModelCheckpoint.directory = %directory
 callbacks.value = [
     @tf.keras.callbacks.TerminateOnNaN(),
     @tf.keras.callbacks.TensorBoard(),
-    @tf.keras.callbacks.LearningRateScheduler(),
     @pointnet.callbacks.BatchNormMomentumScheduler(),
     @pointnet.callbacks.GinConfigWriter(),
 ]
 
 tf.keras.callbacks.TensorBoard.log_dir = %directory
 
-pointnet.problems.epochs_in_steps.steps = 20000
-pointnet.problems.epochs_in_steps.problem = @problem()
-pointnet.problems.epochs_in_steps.batch_size = @batch_size()
-
-tf.keras.callbacks.LearningRateScheduler.schedule = @lr/pointnet.schedules.exponential_decay_fn()
-lr/pointnet.schedules.exponential_decay_fn.initial_value = 1e-3
-lr/pointnet.schedules.exponential_decay_fn.decay_steps = @pointnet.problems.epochs_in_steps()
-lr/pointnet.schedules.exponential_decay_fn.decay_rate = 0.7
-lr/pointnet.schedules.exponential_decay_fn.min_value = 1e-5
-lr/pointnet.schedules.exponential_decay_fn.staircase = True
-
 pointnet.callbacks.BatchNormMomentumScheduler.schedule = @bn/pointnet.schedules.complementary_exponential_decay_fn()
 bn/pointnet.schedules.complementary_exponential_decay_fn.initial_value = 0.5
-bn/pointnet.schedules.complementary_exponential_decay_fn.decay_steps = @pointnet.problems.epochs_in_steps()
+bn/pointnet.schedules.complementary_exponential_decay_fn.decay_steps = @bn/num_epochs_in_examples()
 bn/pointnet.schedules.complementary_exponential_decay_fn.decay_rate = 0.5
 bn/pointnet.schedules.complementary_exponential_decay_fn.max_value = 0.99
-bn/pointnet.schedules.complementary_exponential_decay_fn.staircase = False
+bn/pointnet.schedules.complementary_exponential_decay_fn.staircase = True
+bn/num_epochs_in_examples.num_examples = 200000
+num_epochs_in_examples.problem = @problem()
 
 pointnet.callbacks.GinConfigWriter.log_dir = %directory
 

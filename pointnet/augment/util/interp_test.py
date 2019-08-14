@@ -6,7 +6,7 @@ from __future__ import print_function
 import unittest
 import numpy as np
 import tensorflow as tf
-from pointnet.util.interp import linear_interp
+from pointnet.augment.util.interp import linear_interp
 from tensorflow_datasets.testing.test_utils import run_in_graph_and_eager_modes
 
 

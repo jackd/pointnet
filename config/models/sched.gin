@@ -1,1 +1,0 @@
-pointnet.callbacks.get_additional_callbacks.lr_schedule = @original_lr_schedule

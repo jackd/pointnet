@@ -1,16 +1,14 @@
-import pointnet.cli.main
 import pointnet.aug_opt
-import pointnet.util.path
+import pointnet.path
 
 PopulationBasedTraining.perturbation_interval = %perturbation_interval
 perturbation_interval = 5
 
-main = @aug_opt
-train_spec.local_dir = @util.local_dir()
-util.local_dir.subdir = 'aug_opt'
-util.local_dir.name = %name
+train_spec.local_dir = @pointnet.path.local_dir()
+pointnet.path.local_dir.subdir = 'aug_opt'
+pointnet.path.local_dir.name = %name
 
-aug_opt.name = %name
+aug_opt.name = 'aug_opt'
 aug_opt.scheduler = @scheduler()
 aug_opt.train_spec = @train_spec()
 aug_opt.resume = %resume
@@ -21,19 +19,14 @@ tune_config.inner_bindings = %inner_bindings
 # core configurables
 inner_bindings = []
 
-aug_opt.num_cpus = %num_cpus
-aug_opt.num_gpus = %num_gpus
-
 train_spec.cpus_per_trial = %cpus_per_trial
 train_spec.gpus_per_trial = %gpus_per_trial
-
-# allow ray to automatically select the number of GPUs with `None`s
-num_cpus = None
-num_gpus = None
 
 # customize as necessary
 cpus_per_trial = 2
 gpus_per_trial = 0.4
 
 resume = True
-name = 'base'
+name = 'pointnet-cls'
+
+inner_config = 'models/pointnet-cls.gin'

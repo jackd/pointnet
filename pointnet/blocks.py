@@ -49,3 +49,14 @@ def chkpt_callback(value=None):
 @gin.configurable
 def epochs(value=None):
     return value
+
+
+@gin.configurable
+def num_batches_in_examples(num_examples, batch_size):
+    return num_examples / batch_size
+
+
+@gin.configurable
+def num_epochs_in_examples(num_examples, problem):
+    """Get the number of epochs in the given number of steps."""
+    return num_examples / problem.examples_per_epoch(split='train')

@@ -8,7 +8,6 @@ import functools
 import gin
 import tensorflow as tf
 import tensorflow_datasets as tfds
-from shape_tfds.shape import modelnet
 import six
 from pointnet import fns
 
@@ -267,22 +266,28 @@ class TfdsProblem(Problem):
 def base_modelnet_map(inputs,
                       labels,
                       positions_only=True,
-                      num_points_sampled=None):
+                      num_points=None,
+                      up_dim=2):
     if not positions_only:
         raise NotImplementedError()
     if isinstance(inputs, dict):
         positions = inputs['positions']
-        normals = inputs['normals']
+        normals = None if positions_only else inputs['normals']
     else:
         positions = inputs
-        normals = inputs
+        normals = None
+    if up_dim != 2:
+        shift = 2 - up_dim
+        positions = tf.roll(positions, shift, axis=-1)
+        if normals is not None:
+            normals = tf.roll(normals, shift, axis=-1)
 
-    if num_points_sampled is not None:
+    if num_points is not None:
         if positions_only:
-            positions = tf.random.shuffle(positions)[:num_points_sampled]
+            positions = tf.random.shuffle(positions)[:num_points]
         else:
             indices = tf.range(tf.shape(positions)[0])
-            indices = tf.random.shuffle(indices)[:num_points_sampled]
+            indices = tf.random.shuffle(indices)[:num_points]
             positions = tf.gather(positions, indices)
             normals = tf.gather(positions, indices)
     if positions_only:
@@ -292,103 +297,53 @@ def base_modelnet_map(inputs,
     return inputs, labels
 
 
-class FfdModelnetConfig(modelnet.CloudConfig):
-
-    def __init__(self, num_points, grid_shape=4, name=None, **kwargs):
-        if name is None:
-            if not isinstance(grid_shape, int):
-                assert (len(grid_shape) == 3)
-                if all(g == grid_shape[0] for g in grid_shape[1:]):
-                    grid_shape = grid_shape[0]
-
-            grid_shape_str = ('%d' % grid_shape if isinstance(grid_shape, int)
-                              else 'x'.join(str(g) for g in grid_shape))
-            name = 'ffd-%s-%d' % (grid_shape_str, num_points)
-
-        if isinstance(grid_shape, int):
-            grid_shape = (grid_shape,) * 3
-        self._grid_shape = grid_shape
-        super(FfdModelnetConfig, self).__init__(num_points=num_points,
-                                                name=name,
-                                                **kwargs)
-        if tf.executing_eagerly():
-
-            def f(points):
-                from pointnet.augment import ffd
-                b, p = ffd.get_ffd(points, grid_shape)
-                return dict(b=b, p=p)
-
-            self._f = f
-        else:
-            raise NotImplementedError(
-                'Please generate data in a separate script using separately '
-                'tf.compat.v1.enable_eager_execution')
-
-    @property
-    def grid_shape(self):
-        return self._grid_shape
-
-    @property
-    def feature_item(self):
-        from tensorflow_datasets.core import features
-        import numpy as np
-        grid_size = np.prod(self.grid_shape)
-        return 'ffd', features.FeaturesDict({
-            'b':
-                features.Tensor(shape=(self.num_points, grid_size),
-                                dtype=tf.float32),
-            'p':
-                features.Tensor(shape=(grid_size, 3), dtype=tf.float32),
-        })
-
-    @abc.abstractmethod
-    def load_example(self, off_path):
-        points = super(FfdModelnetConfig, self).load_example(off_path)
-        return self._f(points)
-
-
 @gin.configurable(module='pointnet.problems')
 class ModelnetProblem(TfdsProblem):
 
     def __init__(
             self,
-            num_classes=40,
-            num_points_base=2048,
-            num_points_sampled=1024,
+            builder,
+            num_points=1024,
             positions_only=True,
-            loss=tf.keras.losses.SparseCategoricalCrossentropy(
-                from_logits=True),
-            metrics=(
-                tf.keras.metrics.SparseCategoricalAccuracy(),
-                tf.keras.metrics.SparseCategoricalCrossentropy(
-                    from_logits=True),
-            ),
+            loss=None,
+            metrics=None,
             objective=None,
             train_split='full',  # 'full' or integer percent
             num_examples_override=None,
             map_fn=None,
+            shuffle_buffer=-1,
             **kwargs):
         import functools
+        if loss is None:
+            loss = tf.keras.losses.SparseCategoricalCrossentropy(
+                from_logits=True)
+        if metrics is None:
+            metrics = (
+                tf.keras.metrics.SparseCategoricalAccuracy(),
+                tf.keras.metrics.SparseCategoricalCrossentropy(
+                    from_logits=True),
+            )
+
+        num_classes = builder.num_classes
+
         self._num_examples_override = num_examples_override
         if objective is None:
-            objective = Objective('val_%s' % metrics[0].name, 'max')
+            if len(metrics) == 0:
+                objective = None
+            else:
+                objective = Objective('val_%s' % metrics[0].name, 'max')
 
-        config = modelnet.CloudConfig(num_points=num_points_base)
-        builder = {
-            10: modelnet.Modelnet10,
-            40: modelnet.Modelnet40,
-        }[num_classes](config=config)
-        input_spec = tf.keras.layers.InputSpec(shape=(num_points_sampled, 3),
+        input_spec = tf.keras.layers.InputSpec(shape=(num_points, 3),
                                                dtype=tf.float32)
         output_spec = tf.keras.layers.InputSpec(shape=(num_classes,),
                                                 dtype=tf.float32)
-        self._num_points_sampled = num_points_sampled
+        self._num_points = num_points
         self._train_split = train_split
 
-        self._base_map_fn = functools.partial(
-            base_modelnet_map,
-            positions_only=positions_only,
-            num_points_sampled=num_points_sampled)
+        self._base_map_fn = functools.partial(base_modelnet_map,
+                                              positions_only=positions_only,
+                                              num_points=num_points,
+                                              up_dim=builder.up_dim)
         super(ModelnetProblem, self).__init__(builder=builder,
                                               input_spec=input_spec,
                                               output_spec=output_spec,
@@ -396,18 +351,20 @@ class ModelnetProblem(TfdsProblem):
                                               metrics=metrics,
                                               objective=objective,
                                               map_fn=map_fn,
+                                              shuffle_buffer=shuffle_buffer,
                                               **kwargs)
 
     def get_config(self):
-        base = super(ModelnetProblem, self).get_config()
-        for k in 'input_spec', 'output_spec':
-            base.pop(k)
-        updates = dict(
-            num_points_samples=self._num_points_sampled,
-            train_split=self._train_split,
-            num_classes=self._builder.builder_configconfig.num_classes)
-        base.update(updates)
-        return base
+        raise NotImplementedError('builder config not implemented')
+        # base = super(ModelnetProblem, self).get_config()
+        # for k in 'input_spec', 'output_spec':
+        #     base.pop(k)
+        # updates = dict(builder=None,
+        #                num_points=self._num_points,
+        #                train_split=self._train_split,
+        #                num_classes=self._builder.builder_config.num_classes)
+        # base.update(updates)
+        # return base
 
     def _get_base_dataset(self, split):
         base = super(ModelnetProblem, self)._get_base_dataset(split)
@@ -447,16 +404,6 @@ class ModelnetProblem(TfdsProblem):
         if batch_size is not None:
             value //= batch_size
         return value
-
-
-@gin.configurable(module='pointnet.problems')
-def epochs_in_steps(
-        steps,
-        batch_size,
-        problem,
-):
-    """Get the number of epochs in the given number of steps."""
-    return (steps * batch_size) // problem.examples_per_epoch(split='train')
 
 
 def deserialize(name='modelnet40', **kwargs):

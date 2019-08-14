@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl import logging
 import contextlib
 import six
 import os
@@ -196,10 +197,12 @@ class GinConfigWriter(tf.keras.callbacks.Callback):
 
     def on_train_begin(self, logs=None):
         super(GinConfigWriter, self).on_train_begin(logs)
-        epochs = self.params['epochs']
-        path = os.path.join(self._log_dir, 'operative-config%d.gin' % epochs)
+        path = os.path.join(self._log_dir, 'operative-config.gin')
+        operative_config = gin.operative_config_str()
         with tf.io.gfile.GFile(path, 'w') as fp:
-            fp.write(gin.operative_config_str())
+            fp.write(operative_config)
+        logging.info('Starting training with operative config:\n{}'.format(
+            operative_config))
 
 
 @gin.configurable(module='pointnet.callbacks')
@@ -236,19 +239,3 @@ class BatchNormMomentumScheduler(tf.keras.callbacks.Callback):
     def get_config(self):
         return dict(
             schedule=tf.keras.utils.serialize_keras_object(self.schedule))
-
-
-@gin.configurable(module='pointnet.callbacks', blacklist=['step'])
-def complementary_clipped_exponential_decay(step,
-                                            initial_value,
-                                            decay_steps,
-                                            decay_rate,
-                                            max_value=0.99,
-                                            staircase=False):
-    exponent = step / decay_steps
-    if staircase:
-        exponent = np.floor(exponent)
-    value = 1 - (1 - initial_value) * (decay_rate**exponent)
-    if max_value is not None:
-        value = min(value, max_value)
-    return value
